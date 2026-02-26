@@ -1,0 +1,87 @@
+<div id="tabs-wrapper" class="clearfix">                                <h1 class="with-tabs">Amino acids fluorescence data</h1>
+</div>                                                  <div class="clearfix">
+<div class="region region-content">
+<div id="block-system-main" class="block block-system clearfix">
+
+
+<div class="content">
+<div id="node-94" class="node node-page">
+
+
+
+
+<div class="content clearfix">
+<div class="field field-name-body field-type-text-with-summary field-label-hidden"><div class="field-items"><div class="field-item even"><h2> </h2>
+<h2>Problem</h2>
+<p>There really isn't any problem here! But these simple fluorescence data are nice for illustrating different aspects of the trilinear PARAFAC model. They can be used for second order calibration, for working with systematically missing data, for imposing constraints, etc. The samples were generated and measured by Claus A. Andersson (KVL, DK).</p>
+<h2>Get the data</h2>
+<p>The data are available in zipped MATLAB 4.2 format. Download the data and write load data in MATLAB. If you use the data we would appreciate that you report the results to us as a courtesey of the work involved in producing and preparing the data. Also you may want to refer to the data by referring to</p>
+<p><font face="Courier New,Courier">Bro, R, PARAFAC: Tutorial and applications, Chemometrics and Intelligent Laboratory Systems, 1997, 38, 149-171 </font></p>
+<p> </p>
+<p><font size="2"><a href="http://models.life.ku.dk/sites/default/files/Amino_Acid_fluo.zip" style="text-decoration: none;" target="_self">Data (Matlab format)</a></font></p>
+<p> </p>
+<p>The data have also been described in</p>
+<ol><li><font face="Courier New,Courier">Bro, R, Multi-way Analysis in the Food Industry. Models, Algorithms, and Applications. 1998. Ph.D. Thesis, University of Amsterdam (NL) &amp; Royal Veterinary and Agricultural University (DK). </font></li>
+<li><font face="Courier New,Courier">Kiers, H.A.L. (1998) A three-step algorithm for Candecomp/Parafac analysis of large data sets with multicollinearity, Journal of Chemometrics, 12, 155-171. </font></li>
+</ol><h2>Data</h2>
+<p>This data set consists of five simple laboratory-made samples. Each sample contains different amounts of tyrosine, tryptophan and phenylalanine dissolved in phosphate buffered water. The samples were measured by fluorescence (excitation 250-300 nm, emission 250-450 nm, 1 nm intervals) on a PE LS50B spectrofluorometer with excitation slit-width of 2.5 nm, an emission slit-width of 10 nm and a scan-speed of 1500 nm/s. The array to be decomposed is hence 5 × 51 × 201. In Figure 1 measurements of one of the samples are shown. Ideally these data should be describable with three PARAFAC components. This is so because each individual amino acid gives a rank-one contribution to the data.</p>
+<p><img src="/sites/default/files/image78.gif" style="width: 560px; height: 420px;" /></p>
+<p><i>Figure 1. Fluorescence landscape of a sample containing only phenylalanine.</i></p>
+<p>In Figure 2 and Figure 3 the normalized loadings of a three- and a four-component model are shown. It is readily seen that the three loadings of the three-component model are also found in the four-component model. These three loadings resemble the pure spectra of tryptophan, tyrosine and phenylalanin. The fourth component does not resemble any of the analytes and in fact does not seem to be reflecting chemical information. The reason for the presence of this fourth and quite distinct component must be that non-linearities or scatter effects causes some additional systematic variation.</p>
+<p><img src="/sites/default/files/image83.gif" style="width: 510px; height: 404px;" /></p>
+<p><i>Figure 2. Loading vectors resulting from fitting a three-component PARAFAC model to amino acid data.</i></p>
+<p><img src="/sites/default/files/image84.gif" style="width: 515px; height: 395px;" /></p>
+<p><i>Figure 3. Loading vectors resulting from fitting a four-component model to amino acid data. The fourth suspicious component shown with a thicker line.</i><br />
+</p>
+<p>In fact, these data have been investigated at several times and always using three components. Even when used for second-order calibration the use of three components has given satisfactory results. This is so because the fourth component has a very low variance. The variance of this fourth component is only 0.03% as compared to 50.7, 25.5, and 16.2% of the three ‘chemical’ components. Therefore the bulk variation is not affected significantly by the fourth component and this is also the reason why traditional tools based on residuals have difficulties in detecting this fourth component.</p>
+<p>As an explanation for this finding, it is important to notice in Figure 1 the Rayleigh scatter in the left part, which is not multilinear in its nature. It is situated around a diagonal of corresponding emission and excitation wavelengths. Additionally to Rayleigh scatter the emission below the excitation wavelength does not vary according to the multilinear model, since the emission intensity is zero (up to the noise) regardless of excitation. In fact, the emission mode loading of the fourth ‘spurious’ component resembles the Rayleigh scatter. To avoid such spurious results, the lower part of the data (emission below excitation wavelength) as well as the part corresponding to Rayleigh scatter should not be fitted by the model. Rather these elements must be set to missing values in the three-way array in order not to bias the model.<br />
+<br />
+</p>
+<p><img src="/sites/default/files/image89.gif" style="width: 651px; height: 287px;" /></p>
+<p><i>Figure 4. Core consistency plot of a three (left) and a four (right) component PARAFAC model of the amino acid data with missing entries.</i></p>
+<p>When all appropriate elements of the array have been set to missing, the values in Table 1 are obtained. Clearly, CORCONDIA now correctly identifies that there are three trilinear components in the data. In Figure 4 the core consistency plots are shown. It is easily seen that for the three-component model the Tucker3 core elements do have values close to the target whereas for the four-component model the values of the Tucker3 core vary very much. One element that ideally should be one is close to zero and some elements that ideally should be zero are actually close to one.</p>
+<p><i>Table 1. Amino acid fluorescence data. Results from fitting one- to six-component PARAFAC models to amino acid data with missing values.</i><br />
+</p>
+<table border="1" bordercolor="#808080" cellpadding="4" cellspacing="2" width="339"><tbody><tr><td valign="top" width="38%"><font size="-1"># Components</font></td>
+<td valign="top" width="18%"><font size="-1">LOSS</font></td>
+<td valign="top" width="22%"><font size="-1">RELFIT</font></td>
+<td valign="top" width="23%"><font size="-1">CORCO</font></td>
+</tr><tr><td valign="top" width="38%"><font size="-1">1</font></td>
+<td valign="top" width="18%"><font size="-1">1.000</font></td>
+<td valign="top" width="22%"><font size="-1">68.57</font></td>
+<td valign="top" width="23%"><font size="-1">100.0</font></td>
+</tr><tr><td valign="top" width="38%"><font size="-1">2</font></td>
+<td valign="top" width="18%"><font size="-1">0.293</font></td>
+<td valign="top" width="22%"><font size="-1">90.81</font></td>
+<td valign="top" width="23%"><font size="-1">99.9</font></td>
+</tr><tr><td valign="top" width="38%"><font size="-1">3</font></td>
+<td valign="top" width="18%"><font size="-1">0.001</font></td>
+<td valign="top" width="22%"><font size="-1">99.96</font></td>
+<td valign="top" width="23%"><font size="-1">99.4</font></td>
+</tr><tr><td valign="top" width="38%"><font size="-1">4</font></td>
+<td valign="top" width="18%"><font size="-1">0.001</font></td>
+<td valign="top" width="22%"><font size="-1">99.98</font></td>
+<td valign="top" width="23%"><font size="-1">28.2</font></td>
+</tr><tr><td valign="top" width="38%"><font size="-1">5</font></td>
+<td valign="top" width="18%"><font size="-1">0.001</font></td>
+<td valign="top" width="22%"><font size="-1">99.99</font></td>
+<td valign="top" width="23%"><font size="-1">13.7</font></td>
+</tr><tr><td valign="top" width="38%"><font size="-1">6</font></td>
+<td valign="top" width="18%"><font size="-1">0.000</font></td>
+<td valign="top" width="22%"><font size="-1">99.99</font></td>
+<td valign="top" width="23%"><font size="-1">62.8</font></td>
+</tr></tbody></table><p>In Table 1 it is seen that a six-component solution has a quite high core consistency, but this is preceded by two very low values. Hence, the choice here clearly is to take three components.<br />
+</p>
+<p><i><font size="-1">Copyright © 1996-98 <a href="http://www.models.life.ku.dk/users/rasmus/"><font color="#ff0000" size="2">Rasmus Bro</font></a> (<a href="mailto:rb@kvl.dk">rb@kvl.dk</a>). All rights reserved</font></i></p>
+</div></div></div>  </div>
+
+<div class="clearfix">
+<div class="links"></div>
+
+</div>
+
+</div>
+</div>
+</div>
+</div>
+</div>

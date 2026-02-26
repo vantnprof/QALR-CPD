@@ -1,0 +1,21 @@
+\begin{table*}[t]
+\centering
+\caption{Synthetic noise ablation: performance across \(\sigma\in\{0,10^{-3},10^{-2},5{\times}10^{-2},10^{-1}\}\) at fixed collinearity \(\rho=0.5\). Mean \(\pm\) std over \(S=20\) seeds. Cells show Rel.\ error for ALS/Top-\(K\); \(\hat R\) and Rel.\ error for ALS-LR/QALR-CPD.}
+\label{tab:synth_noise_sweep_best}
+\scriptsize
+\setlength{\tabcolsep}{3.2pt}
+\renewcommand{\arraystretch}{1.05}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+Method & \(0\) & \(10^{-3}\) & \(10^{-2}\) & \(5{\times}10^{-2}\) & \(10^{-1}\) \\
+\midrule
+ALS (\(R=20\)) & \(2.8110{\times}10^{-4} \pm 1.0314{\times}10^{-4}\) & \(1.4161{\times}10^{-1} \pm 6.1321{\times}10^{-3}\) & \(8.1293{\times}10^{-1} \pm 1.1687{\times}10^{-2}\) & \(9.8043{\times}10^{-1} \pm 9.8104{\times}10^{-4}\) & \(9.8637{\times}10^{-1} \pm 4.8607{\times}10^{-4}\) \\
+Top-\(K\) (\(K=6\)) & \(4.2729{\times}10^{-1} \pm 7.1776{\times}10^{-2}\) & \(3.1891{\times}10^{-1} \pm 6.5629{\times}10^{-2}\) & \(8.2239{\times}10^{-1} \pm 1.1995{\times}10^{-2}\) & \(9.8929{\times}10^{-1} \pm 8.7728{\times}10^{-4}\) & \(9.9527{\times}10^{-1} \pm 3.6083{\times}10^{-4}\) \\
+ALS-LR (ES) (\(R_{\max}=20,\ \mu=10^{-1}\)) & \(\hat R=8.55 \pm 1.70,\ \mathrm{err}=4.7999{\times}10^{-5} \pm 1.0142{\times}10^{-4}\) & \(\hat R=9.75 \pm 1.83,\ \mathrm{err}=1.4241{\times}10^{-1} \pm 6.1848{\times}10^{-3}\) & \(\hat R=6.90 \pm 0.79,\ \mathrm{err}=8.1986{\times}10^{-1} \pm 1.1788{\times}10^{-2}\) & \(\hat R=1.15 \pm 0.37,\ \mathrm{err}=9.9461{\times}10^{-1} \pm 1.5104{\times}10^{-3}\) & \(\hat R=1.00 \pm 0.00,\ \mathrm{err}=9.9851{\times}10^{-1} \pm 3.5041{\times}10^{-4}\) \\
+ALS-LR (BF) (\(R_{\max}=20,\ \mu=10^{-1}\)) & \(\hat R=7.70 \pm 1.89,\ \mathrm{err}=1.8614{\times}10^{-2} \pm 8.3189{\times}10^{-2}\) & \(\hat R=9.75 \pm 1.83,\ \mathrm{err}=1.4241{\times}10^{-1} \pm 6.1848{\times}10^{-3}\) & \(\hat R=6.90 \pm 0.79,\ \mathrm{err}=8.1986{\times}10^{-1} \pm 1.1788{\times}10^{-2}\) & \(\hat R=1.15 \pm 0.37,\ \mathrm{err}=9.9461{\times}10^{-1} \pm 1.5104{\times}10^{-3}\) & \(\hat R=1.00 \pm 0.00,\ \mathrm{err}=9.9851{\times}10^{-1} \pm 3.5041{\times}10^{-4}\) \\
+QALR-CPD (\(\mu=10^{-1}\)) & \(\hat R=7.95 \pm 1.39,\ \mathrm{err}=2.5823{\times}10^{-5} \pm 5.6955{\times}10^{-5}\) & \(\hat R=10.25 \pm 1.86,\ \mathrm{err}=1.4238{\times}10^{-1} \pm 6.2071{\times}10^{-3}\) & \(\hat R=7.05 \pm 0.94,\ \mathrm{err}=8.1977{\times}10^{-1} \pm 1.1679{\times}10^{-2}\) & \(\hat R=4.95 \pm 7.73,\ \mathrm{err}=9.9155{\times}10^{-1} \pm 5.5688{\times}10^{-3}\) & \(\hat R=20.00 \pm 0.00,\ \mathrm{err}=9.8637{\times}10^{-1} \pm 4.8607{\times}10^{-4}\) \\
+\bottomrule
+\end{tabular}%
+}
+\end{table*}

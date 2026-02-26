@@ -1,0 +1,7 @@
+method,label,rank_init,sweeps,final_rel_error,final_rank,qaoa_energy_last,prunes_applied,total_time_s,prune_mu,prune_freq,qaoa_reps,qaoa_shots,seed
+classical,Classical ALS,8,30,0.13241055607795715,8,,0,3.849306583404541,0.05,3,2,1024,0
+quantum,Quantum ALS,8,30,0.13781601190567017,7,,1,160.29660868644714,0.05,3,2,1024,0
+classical,Classical ALS,8,30,0.14212366938591003,6,,2,3.801668643951416,0.05,3,2,1024,1
+quantum,Quantum ALS,8,30,0.13931597769260406,7,,1,159.34583139419556,0.05,3,2,1024,1
+classical,Classical ALS,8,30,0.13531683385372162,5,,2,3.1760976314544678,0.05,3,2,1024,2
+quantum,Quantum ALS,8,30,0.1378764808177948,5,,1,139.5506567955017,0.05,3,2,1024,2

@@ -1,0 +1,51 @@
+\begin{table*}[t]
+\centering
+\caption{Synthetic benchmark: selected rank \(\hat R\) and relative error (mean \(\pm\) std over \(20\) seeds), all configurations (rank init 20).}
+\label{tab:results_synth_all}
+\begin{tabular}{@{}llcc@{}}
+\toprule
+Method & Setting & \(\hat R\) & Rel.\ error \(\downarrow\) \\ \midrule
+ALS & \(R=20\) & 20.00 $\pm$ 0.00 & 8.129e-01 $\pm$ 1.167e-02 \\
+ALS w/ Top-K & \(R=20,\ K=3\) & 3.00 $\pm$ 0.00 & 9.024e-01 $\pm$ 9.615e-03 \\
+ALS w/ Top-K & \(R=20,\ K=4\) & 4.00 $\pm$ 0.00 & 8.736e-01 $\pm$ 1.175e-02 \\
+ALS w/ Top-K & \(R=20,\ K=5\) & 5.00 $\pm$ 0.00 & 8.466e-01 $\pm$ 1.237e-02 \\
+ALS w/ Top-K & \(R=20,\ K=6\) & 6.00 $\pm$ 0.00 & 8.224e-01 $\pm$ 1.199e-02 \\
+ALS w/ Top-K & \(R=20,\ K=7\) & 7.00 $\pm$ 0.00 & 8.203e-01 $\pm$ 1.187e-02 \\
+ALS w/ Top-K & \(R=20,\ K=8\) & 8.00 $\pm$ 0.00 & 8.194e-01 $\pm$ 1.174e-02 \\
+ALS w/ Top-K & \(R=20,\ K=9\) & 9.00 $\pm$ 0.00 & 8.188e-01 $\pm$ 1.175e-02 \\
+ALS w/ Top-K & \(R=20,\ K=10\) & 10.00 $\pm$ 0.00 & 8.182e-01 $\pm$ 1.174e-02 \\
+ALS w/ Top-K & \(R=20,\ K=11\) & 11.00 $\pm$ 0.00 & 8.176e-01 $\pm$ 1.173e-02 \\
+ALS w/ Top-K & \(R=20,\ K=12\) & 12.00 $\pm$ 0.00 & 8.171e-01 $\pm$ 1.172e-02 \\
+ALS w/ Top-K & \(R=20,\ K=13\) & 13.00 $\pm$ 0.00 & 8.165e-01 $\pm$ 1.172e-02 \\
+ALS w/ Top-K & \(R=20,\ K=14\) & 14.00 $\pm$ 0.00 & 8.160e-01 $\pm$ 1.171e-02 \\
+ALS w/ Top-K & \(R=20,\ K=15\) & 15.00 $\pm$ 0.00 & 8.155e-01 $\pm$ 1.170e-02 \\
+ALS w/ Top-K & \(R=20,\ K=16\) & 16.00 $\pm$ 0.00 & 8.149e-01 $\pm$ 1.170e-02 \\
+ALS w/ Top-K & \(R=20,\ K=17\) & 17.00 $\pm$ 0.00 & 8.144e-01 $\pm$ 1.169e-02 \\
+ALS w/ Top-K & \(R=20,\ K=18\) & 18.00 $\pm$ 0.00 & 8.139e-01 $\pm$ 1.168e-02 \\
+ALS w/ Top-K & \(R=20,\ K=19\) & 19.00 $\pm$ 0.00 & 8.134e-01 $\pm$ 1.168e-02 \\
+ALS w/ Top-K & \(R=20,\ K=20\) & 20.00 $\pm$ 0.00 & 8.129e-01 $\pm$ 1.167e-02 \\
+TREL1 & \(R_{init}=20,\ \lambda=0.01\) & 17.80 $\pm$ 0.62 & 9.043e-01 $\pm$ 2.138e-02 \\
+TREL1 & \(R_{init}=20,\ \lambda=0.02\) & 16.30 $\pm$ 0.73 & 9.045e-01 $\pm$ 2.139e-02 \\
+TREL1 & \(R_{init}=20,\ \lambda=0.05\) & 9.90 $\pm$ 1.07 & 9.059e-01 $\pm$ 2.128e-02 \\
+TREL1 & \(R_{init}=20,\ \lambda=0.07\) & 5.65 $\pm$ 0.99 & 9.073e-01 $\pm$ 2.159e-02 \\
+TREL1 & \(R_{init}=20,\ \lambda=0.1\) & 2.05 $\pm$ 1.00 & 9.167e-01 $\pm$ 2.519e-02 \\
+TREL1 & \(R_{init}=20,\ \lambda=0.2\) & 1.20 $\pm$ 0.41 & 9.448e-01 $\pm$ 3.908e-02 \\
+TREL1 & \(R_{init}=20,\ \lambda=0.5\) & 1.00 $\pm$ 0.00 & 9.655e-01 $\pm$ 4.565e-02 \\
+TREL1 & \(R_{init}=20,\ \lambda=0.6\) & 1.00 $\pm$ 0.00 & 9.666e-01 $\pm$ 4.455e-02 \\
+TREL1 & \(R_{init}=20,\ \lambda=0.7\) & 1.00 $\pm$ 0.00 & 9.787e-01 $\pm$ 3.723e-02 \\
+TREL1 & \(R_{init}=20,\ \lambda=0.8\) & 1.00 $\pm$ 0.00 & 9.800e-01 $\pm$ 3.592e-02 \\
+TREL1 & \(R_{init}=20,\ \lambda=0.9\) & 1.00 $\pm$ 0.00 & 9.850e-01 $\pm$ 3.127e-02 \\
+TREL1 & \(R_{init}=20,\ \lambda=1\) & 1.00 $\pm$ 0.00 & 9.858e-01 $\pm$ 2.954e-02 \\
+QALR-CPD & \(R_{\max}=20,\ \mu=0.0001,\ shots=1024\) & 9.20 $\pm$ 1.96 & 8.185e-01 $\pm$ 1.122e-02 \\
+QALR-CPD & \(R_{\max}=20,\ \mu=0.005,\ shots=1024\) & 9.15 $\pm$ 1.35 & 8.185e-01 $\pm$ 1.138e-02 \\
+QALR-CPD & \(R_{\max}=20,\ \mu=0.01,\ shots=1024\) & 9.20 $\pm$ 1.58 & 8.185e-01 $\pm$ 1.138e-02 \\
+QALR-CPD & \(R_{\max}=20,\ \mu=0.05,\ shots=1024\) & 6.30 $\pm$ 0.47 & 8.201e-01 $\pm$ 1.171e-02 \\
+QALR-CPD & \(R_{\max}=20,\ \mu=0.1,\ shots=1024\) & 6.35 $\pm$ 0.59 & 8.201e-01 $\pm$ 1.175e-02 \\
+QALR-CPD & \(R_{\max}=20,\ \mu=0.2,\ shots=1024\) & 6.00 $\pm$ 0.79 & 8.221e-01 $\pm$ 1.325e-02 \\
+QALR-CPD & \(R_{\max}=20,\ \mu=0.4,\ shots=1024\) & 5.90 $\pm$ 0.45 & 8.217e-01 $\pm$ 1.203e-02 \\
+QALR-CPD & \(R_{\max}=20,\ \mu=0.6,\ shots=1024\) & 5.95 $\pm$ 0.22 & 8.210e-01 $\pm$ 1.238e-02 \\
+QALR-CPD & \(R_{\max}=20,\ \mu=0.8,\ shots=1024\) & 5.00 $\pm$ 1.08 & 8.351e-01 $\pm$ 1.840e-02 \\
+QALR-CPD & \(R_{\max}=20,\ \mu=1,\ shots=1024\) & 3.45 $\pm$ 1.36 & 8.627e-01 $\pm$ 2.484e-02 \\
+\bottomrule
+\end{tabular}
+\end{table*}

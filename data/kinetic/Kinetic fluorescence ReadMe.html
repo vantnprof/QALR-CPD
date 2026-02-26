@@ -1,0 +1,162 @@
+<div id="tabs-wrapper" class="clearfix">                                <h1 class="with-tabs">Kinetic fluorimetric determination of catecholamines</h1>
+</div>                                                  <div class="clearfix">
+<div class="region region-content">
+<div id="block-system-main" class="block block-system clearfix">
+
+
+<div class="content">
+<div id="node-105" class="node node-page">
+
+
+
+
+<div class="content clearfix">
+<div class="field field-name-body field-type-text-with-summary field-label-hidden"><div class="field-items"><div class="field-item even"><p> </p>
+<p>A four-way data set with the modes: Concentration, excitation wavelength, emission wavelength and time.</p>
+<h2> </h2>
+<h2><strong>Introduction</strong></h2>
+<p>Determination of the urinary catecholamines, adrenaline and noradrenaline, is interesting in relation to occupational health research, because urinary catecholamine excretion is a measure of acute stress. High performance liquid chromatography (HPLC) methods are typically used for separation of adrenaline and noradrenaline followed by quantification using fluorescence or electrochemical detection. Development of a faster and cheaper method would facilitate that these biomarkers are used more often in the investigation and prevention of stress in the working environment. </p>
+<p>It was attempted to quantify the two catecholamines, adrenaline and noradrenaline, in mixtures using fluorescence spectroscopy and multi-way chemometrics. A kinetic fluorimetric method was developed. This method derives selectivity from the different rates, at which the fluorescing 3,5,6-trihydroxyindole derivatives (lutines) of the catecholamines are formed and degraded for adrenaline and noradrenaline. Fluorescence landscapes were measured at consecutive time points for every sample hereby creating a four-way data array. The data described below were obtained from measurements on standard solutions, i.e. catecholamines dissolved in dilute acid. The data are well suited for parallel factor analysis (PARAFAC) and multi-way partial least squares regression (N-PLS).</p>
+<h1> </h1>
+<p><strong><a href="http://models.life.ku.dk/sites/default/files/Kinetic_Fluor.zip">Get the data</a> (Matlab files + Word document in ZIP-file)</strong></p>
+<p> </p>
+<p>The data are available in zipped MATLAB 6.0 format. Download the data <strong><a href="go?filename=Kinetic_Fluor.zip">here</a></strong>. There are three different versions of the set, the only difference between them being the way the four modes are reduced. For each set there is a matrix with reference concentrations included. See the further description of the sets below.</p>
+<p>1. X20   (64 measurements, 12 emissions, 10 excitations, 20 time points)<br />
+2. X60   (all 64 measurements, 12 emissions, 10 excitations, 60 time points)<br />
+3. Xlarge (64 measurements, 48 emissions, 30 excitations, 60 time points)</p>
+<p>If you use the data we would appreciate that you report the results to us as a courtesy of the work involved in producing and preparing the data. Also you may want to refer to the data by referring to</p>
+<p>R.P.H. Nikolajsen, K.S. Booksh, Å.M. Hansen, R. Bro.<br />
+Quantifying catecholamines using multi-way kinetic modeling<br />
+Analytica Chimica Acta, Vol 475 Iss 1 - 2, 2003,  pg.  137-150</p>
+<h1> </h1>
+<h1>Description of data</h1>
+<h4><strong>Lutine kinetics in theory</strong></h4>
+<p>The general schemes for the lutine reaction for each catecholamine are:</p>
+<p><img src="/sites/default/files/image002.gif" style="border-width: 0px; border-style: solid; width: 239px; height: 27px;" />                        Scheme 1</p>
+<p><img src="/sites/default/files/image004.gif" style="border-width: 0px; border-style: solid; width: 277px; height: 27px;" />   Scheme 2</p>
+<p>Adrenaline (A) and noradrenaline (NA) are oxidized to their respective adrenochromes (A<sub>chr</sub> and NA<sub>chr</sub>). The rate constants for the oxidation reactions are not interesting in this context, because the oxidation of catecholamines to adreno-/noradreno-chrome is not monitored. This reaction is simply run for a specified time interval (and then stopped by adding anti-oxidant) for each sample, only changing the catecholamine concentrations, meaning that the same fraction of catecholamines should be oxidized in each run. The adrenochromes tautomerize (rearrange) in alkaline solution to adreno-lutine (A<sub>lut</sub>) and noradreno-lutine (NA<sub>lut</sub>) with the respective rate constants k<sub>A,1</sub> and k<sub>NA,1</sub>. Further, the lutines are degraded to non-fluorescent products (Deg) with the rate constants k<sub>A,2 </sub>and k<sub>NA,2</sub>. Hence, adrenolutine and noradrenolutine are intermediates, and the only compounds in Scheme 1 and 2 known to fluoresce in the area with excitation range roughly 390-410 nm and emission range roughly 500-530 nm.</p>
+<p>It is assumed that the reaction schemes for the two catecholamines are independent, and that the reactions can be run under pseudo-first-order conditions, meaning that only the concentrations of catecholamines influence the rates, as all other reagents should be present in excess. Hence, two consecutive pseudo-first-order reactions are assumed to describe the development in lutine concentration over time for each analyte. The equation below states the according theoretical expression for the adrenolutine concentration [L] at time ‘i’, having a starting concentration of adrenaline [A]<sub>0 </sub>and the two rate constants k<sub>A,1</sub> and k<sub>A,2</sub> (cf. Scheme 1). An equivalent equation holds for noradrenolutine concentration with respect to [NA]<sub>0,</sub> k<sub>NA,1</sub> and k<sub>NA,2</sub> .</p>
+<p> </p>
+<p><img src="/sites/default/files/image006.gif" style="width: 227px; height: 49px;" /></p>
+<p> </p>
+<p>Hence, it is expected that the fluorescence intensity of the lutines is linearly related to the catecholamine concentration.</p>
+<h3>Measurements</h3>
+<p>33 standard solutions of the two analytes were measured in two replicates (except for two samples measured in only one replicate). Measuring the same solution at different days made the replicates. The concentration ranges were 50 to 1200 nmol/l for adrenaline and 30 to 1400 nmol/l for noradrenaline. There are pure adrenaline, pure noradrenaline and mixtures of the two included in the set. The samples were measured in random order at room temperature (24 +/- 1 °C) in the course of four consecutive days. From each sample a dark current spectrum was subtracted, and ‘cosmic ray spikes’ from detector were removed. For details on experimental set-up and fluorimeter, see [1].</p>
+<h3>Reductions in emission, excitation and time mode</h3>
+<p>There are three different versions of the set, the only difference between them being the way the four modes are reduced. The original data had the size: 64 individual measurements (33 samples), each of which consisted of 250 emission points and 30 excitations points measured at 60 time points, which resulted in a four-way raw data array (64 x 250 x 30 x 60). Since this is a very large array to handle in MATLAB, reductions were performed according to the table below, for details see [1].</p>
+<table border="1" cellpadding="0" cellspacing="0" style="width: 507px;" width="507"><tbody><tr><td style="width: 160px;">
+<h1> </h1>
+<h3>Reductions</h3>
+</td>
+<td style="width: 86px;">
+<p align="center"><strong>No. of emission</strong></p>
+<p align="center"><strong>points</strong></p>
+</td>
+<td style="width: 86px;">
+<p align="center"><strong>No. of excitation</strong></p>
+<p align="center"><strong>points</strong></p>
+</td>
+<td style="width: 79px;">
+<p align="center"><strong>No. of time</strong></p>
+<p align="center"><strong>points</strong></p>
+</td>
+<td style="width: 96px;">
+<p align="center"><strong>Data set name</strong></p>
+</td>
+</tr><tr><td style="width: 160px;">
+<p>Raw data</p>
+</td>
+<td style="width: 86px;">
+<p align="center">250</p>
+</td>
+<td style="width: 86px;">
+<p align="center">30</p>
+</td>
+<td style="width: 79px;">
+<p align="center">60</p>
+</td>
+<td style="width: 96px;">
+<p align="center">-</p>
+</td>
+</tr><tr><td style="width: 160px;">
+<p>Truncation of emission mode to relevant emission range</p>
+</td>
+<td style="width: 86px;">
+<p align="center">144</p>
+</td>
+<td style="width: 86px;">
+<p align="center">30</p>
+</td>
+<td style="width: 79px;">
+<p align="center">60</p>
+</td>
+<td style="width: 96px;">
+<p align="center">-</p>
+</td>
+</tr><tr><td style="width: 160px;">
+<p>Taking mean of every 3<sup>rd</sup> emission</p>
+</td>
+<td style="width: 86px;">
+<p align="center">48</p>
+</td>
+<td style="width: 86px;">
+<p align="center">30</p>
+</td>
+<td style="width: 79px;">
+<p align="center">60</p>
+</td>
+<td style="width: 96px;">
+<h5>Xlarge.mat</h5>
+</td>
+</tr><tr><td style="width: 160px;">
+<p>Taking every third or fourth of the spectral modes</p>
+<p> </p>
+</td>
+<td style="width: 86px;">
+<p align="center">12</p>
+</td>
+<td style="width: 86px;">
+<p align="center">10</p>
+</td>
+<td style="width: 79px;">
+<p align="center">60</p>
+</td>
+<td style="width: 96px;">
+<p align="center"><strong>X60t.mat</strong></p>
+</td>
+</tr><tr><td style="width: 160px;">
+<p>Taking every third or fourth of the spectral and time modes</p>
+</td>
+<td style="width: 86px;">
+<p align="center">12</p>
+</td>
+<td style="width: 86px;">
+<p align="center">10</p>
+</td>
+<td style="width: 79px;">
+<p align="center">20</p>
+</td>
+<td style="width: 96px;">
+<p align="center"><strong>X20t.mat</strong></p>
+<p align="center"> </p>
+</td>
+</tr></tbody></table><p>The referece concentrations can be found in the file <strong>y64s.mat</strong>. First column represents adrenaline concentration and the second column, noradrenaline concentrations.</p>
+<h3>Outlying samples</h3>
+<p>It was found that 5 measurements of the original 64 are severe outliers. 15 measurements were removed in [1]. The sample ID’s for the outliers are given below (i.e. number in first mode of the four-way array with 64 measurements).<br />
+5 severe outliers:    [35 36 45 46 64]<br />
+15 outliers removed in ref.[1]:   [7 8 11 12 28 31 35 36 45 46 50 52 55 56 64]</p>
+<h3>Reference [1]</h3>
+<p>R.P.H. Nikolajsen, K.S. Booksh, Å.M. Hansen, R. Bro.<br /><em>Quantifying catecholamines using multi-way kinetic modeling</em><br />
+Analytica Chimica Acta, Vol 475 Iss 1 - 2, 2003,  pg.  137-150</p>
+</div></div></div>  </div>
+
+<div class="clearfix">
+<div class="links"></div>
+
+</div>
+
+</div>
+</div>
+</div>
+</div>
+</div>

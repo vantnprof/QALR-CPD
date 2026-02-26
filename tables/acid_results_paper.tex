@@ -1,0 +1,15 @@
+\begin{table}[t]
+\centering
+\caption{Amino Acids fluorescence tensor: relative error and selected rank (mean \(\pm\) std over \(20\) seeds).}
+\label{tab:results_amino}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Method & \(\hat R\) & Rel.\ error \(\downarrow\) \\
+\midrule
+ALS & \(10.00 \pm 0.00\) & \(1.2934{\times}10^{-2} \pm 3.9730{\times}10^{-4}\) \\
+ALS w/ Top-\(K\) & \(4.00 \pm 0.00\) & \(5.0956{\times}10^{-1} \pm 1.8811{\times}10^{-1}\) \\
+TREL1~\cite{shi2017tensorrankestimation} & \(9.95 \pm 0.22\) & \(5.3176{\times}10^{-1} \pm 1.6873{\times}10^{-6}\) \\
+QALR-CPD (ours) & \(11.25 \pm 3.78\) & \(1.7608{\times}10^{-2} \pm 2.0373{\times}10^{-2}\) \\
+\bottomrule
+\end{tabular}
+\end{table}

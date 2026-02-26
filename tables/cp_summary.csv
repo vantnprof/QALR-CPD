@@ -1,0 +1,3 @@
+label,final_rel_error_mean,final_rel_error_std,sweeps_mean,total_time_s_mean,total_shots_median
+Classical ALS,0.16826933970053987,0.004694497922955626,15.0,0.011876312891642203,0.0
+VQLS (shots=analytic),0.168269603451093,0.004694398590226198,14.933333333333334,27.02626225153605,0.0

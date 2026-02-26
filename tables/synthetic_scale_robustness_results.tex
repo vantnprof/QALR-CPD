@@ -1,0 +1,20 @@
+\begin{table*}[t]
+\centering
+\caption{Synthetic scale-robustness ablation across \(10^x\) with \(x\in\{-10,-5,0,5,10\}\), at fixed noise \(\sigma=0.01\) and collinearity \(\rho=0.5\). Mean \(\pm\) std across seeds.}
+\label{tab:synth_scale_sweep}
+\scriptsize
+\setlength{\tabcolsep}{3.2pt}
+\renewcommand{\arraystretch}{1.05}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+Method & $10^{-10}$ & $10^{-5}$ & $10^{0}$ & $10^{5}$ & $10^{10}$ \\
+\midrule
+ALS (R=20) & -- & -- & \(0.8129 \pm 0.01169\) & -- & -- \\
+Top-\(K\) (K=6) & -- & -- & \(0.8224 \pm 0.01199\) & -- & -- \\
+ALS-LR (ES) ($\mu=0.1$) & \(\hat R=6.9 \pm 0.788,\ \mathrm{Err}=0.82 \pm 0.0118\) & \(\hat R=6.9 \pm 0.788,\ \mathrm{Err}=0.82 \pm 0.0118\) & \(\hat R=6.9 \pm 0.788,\ \mathrm{Err}=0.82 \pm 0.0118\) & \(\hat R=6.9 \pm 0.788,\ \mathrm{Err}=0.82 \pm 0.0118\) & \(\hat R=6.9 \pm 0.788,\ \mathrm{Err}=0.82 \pm 0.0118\) \\
+ALS-LR (BF) ($\mu=0.1$) & \(\hat R=6.9 \pm 0.718,\ \mathrm{Err}=0.82 \pm 0.0118\) & \(\hat R=6.9 \pm 0.788,\ \mathrm{Err}=0.82 \pm 0.0118\) & \(\hat R=6.9 \pm 0.788,\ \mathrm{Err}=0.82 \pm 0.0118\) & \(\hat R=6.9 \pm 0.788,\ \mathrm{Err}=0.82 \pm 0.0118\) & \(\hat R=6.9 \pm 0.788,\ \mathrm{Err}=0.82 \pm 0.0118\) \\
+QALR-CPD ($\mu=0.1$, $S=4096$) & \(\hat R=20 \pm 0,\ \mathrm{Err}=0.813 \pm 0.0117\) & \(\hat R=8.2 \pm 2.21,\ \mathrm{Err}=0.822 \pm 0.0196\) & \(\hat R=7.1 \pm 0.788,\ \mathrm{Err}=0.82 \pm 0.0117\) & \(\hat R=7.55 \pm 2.74,\ \mathrm{Err}=0.823 \pm 0.0125\) & \(\hat R=7.9 \pm 2.22,\ \mathrm{Err}=0.823 \pm 0.0149\) \\
+\bottomrule
+\end{tabular}}
+\end{table*}
