@@ -208,3 +208,4 @@ __marimo__/
 
 # generated experiment outputs
 results/*_experiment.csv
+script/poster/
