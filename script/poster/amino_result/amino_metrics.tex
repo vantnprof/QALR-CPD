@@ -1,0 +1,18 @@
+\begin{table}[t]
+\caption{Amino Acids dataset: placeholder results for ES, BF, simulator-QAOA, and hardware-QAOA on the induced rank-selection QUBO.}
+\label{tab:amino_metrics}
+\centering
+\scriptsize
+\setlength{\tabcolsep}{5pt}
+\renewcommand{\arraystretch}{1.05}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Method & \(\hat{R}\) & Rel.\ error \(\downarrow\) & \(\bar{\delta}\) \(\downarrow\) \\
+\midrule
+ES                               & 7.20 $\pm$ 1.60 & 4.569e-01 $\pm$ 5.953e-02 & 0 \\
+BF                               & 4.40 $\pm$ 1.62 & 5.940e-01 $\pm$ 1.087e-01 & 9.725e-02 $\pm$ 7.397e-02 \\
+QAOA (simulator)                 & 6.40 $\pm$ 2.58 & 5.055e-01 $\pm$ 8.140e-02 & 3.894e-02 $\pm$ 4.113e-02 \\
+QAOA (real device)               & \textit{--} & \textit{--} & \textit{--} \\
+\bottomrule
+\end{tabular}
+\end{table}

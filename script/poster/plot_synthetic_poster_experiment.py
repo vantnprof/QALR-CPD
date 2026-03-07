@@ -82,32 +82,72 @@ def _fmt_latex_pm(mean: float, std: float, sci: bool = False) -> str:
     return f"{mean:.2f} $\\pm$ {std:.2f}"
 
 
+def _paired_figure_paths(output_path: Path) -> Tuple[Path, Path]:
+    base = output_path.with_suffix("") if output_path.suffix else output_path
+    return base.with_suffix(".png"), base.with_suffix(".pdf")
+
+
+def _pad_trace(trace: np.ndarray, target_len: int) -> np.ndarray:
+    arr = np.asarray(trace, dtype=np.float64).reshape(-1)
+    target_len = int(target_len)
+    if target_len <= 0:
+        return np.zeros((0,), dtype=np.float64)
+    if arr.size == 0:
+        return np.full((target_len,), np.nan, dtype=np.float64)
+    if arr.size >= target_len:
+        return arr[:target_len]
+    return np.pad(arr, (0, target_len - arr.size), mode="edge")
+
+
 def write_latex_table(rows: Sequence[Dict[str, float]], output_path: Path) -> None:
     by_method = {str(r["solver"]): r for r in rows}
 
-    def _row_line(method: str) -> str:
-        row = by_method.get(method)
-        if row is None:
-            return f"{method} & \\textit{{--}} & \\textit{{--}} & \\textit{{--}} & \\textit{{--}} \\\\"
+    es_row = by_method.get("ES")
+    es_energy_mean = float(es_row.get("mean_energy", float("nan"))) if es_row is not None else float("nan")
+
+    def _row_values(solver_key: str, is_es: bool = False) -> Tuple[str, str, str]:
+        row = by_method.get(solver_key)
+        required = ("mean_Rhat", "std_Rhat", "mean_relerr", "std_relerr")
+        if row is None or any(key not in row for key in required):
+            return r"\textit{--}", r"\textit{--}", "0" if is_es else r"\textit{--}"
+
         rhat = _fmt_latex_pm(float(row["mean_Rhat"]), float(row["std_Rhat"]), sci=False)
         rel = _fmt_latex_pm(float(row["mean_relerr"]), float(row["std_relerr"]), sci=True)
-        energy = _fmt_latex_pm(float(row["mean_energy"]), float(row["std_energy"]), sci=True)
-        gap = "0" if method == "ES" else _fmt_latex_pm(float(row["mean_gap"]), float(row["std_gap"]), sci=True)
-        return f"{method} & {rhat} & {rel} & {energy} & {gap} \\\\"
+
+        if is_es:
+            delta = "0"
+        else:
+            mean_delta = float(row.get("mean_delta", float("nan")))
+            std_delta = float(row.get("std_delta", float("nan")))
+            if (not np.isfinite(mean_delta)) and np.isfinite(es_energy_mean):
+                mean_gap = float(row.get("mean_gap", float("nan")))
+                std_gap = float(row.get("std_gap", float("nan")))
+                denom = max(abs(es_energy_mean), 1e-12)
+                mean_delta = abs(mean_gap) / denom if np.isfinite(mean_gap) else float("nan")
+                std_delta = abs(std_gap) / denom if np.isfinite(std_gap) else float("nan")
+            delta = _fmt_latex_pm(mean_delta, std_delta, sci=True)
+        return rhat, rel, delta
+
+    es_rhat, es_rel, es_delta = _row_values("ES", is_es=True)
+    bf_rhat, bf_rel, bf_delta = _row_values("BF", is_es=False)
+    sim_rhat, sim_rel, sim_delta = _row_values("QAOA", is_es=False)
 
     lines = [
         r"\begin{table}[t]",
-        r"\caption{Result on synthetic dataset.}",
+        r"\caption{Synthetic dataset: placeholder results for ES, BF, simulator-QAOA, and hardware-QAOA on the induced rank-selection QUBO.}",
         r"\label{tab:synth_metrics}",
         r"\centering",
         r"\scriptsize",
-        r"\begin{tabular}{@{}lcccc@{}}",
+        r"\setlength{\tabcolsep}{5pt}",
+        r"\renewcommand{\arraystretch}{1.05}",
+        r"\begin{tabular}{@{}lccc@{}}",
         r"\toprule",
-        r"Method & \(\hat R\) & Rel.\ error \(\downarrow\) & \(E(\mathbf{z})\) \(\downarrow\) & Gap to ES \(\downarrow\) \\",
+        r"Method & \(\hat{R}\) & Rel.\ error \(\downarrow\) & \(\bar{\delta}\) \(\downarrow\) \\",
         r"\midrule",
-        _row_line("ES"),
-        _row_line("BF"),
-        _row_line("QAOA"),
+        f"ES                               & {es_rhat} & {es_rel} & {es_delta} \\\\",
+        f"BF                               & {bf_rhat} & {bf_rel} & {bf_delta} \\\\",
+        f"QAOA (simulator)                 & {sim_rhat} & {sim_rel} & {sim_delta} \\\\",
+        r"QAOA (real device)               & \textit{--} & \textit{--} & \textit{--} \\",
         r"\bottomrule",
         r"\end{tabular}",
         r"\end{table}",
@@ -117,35 +157,103 @@ def write_latex_table(rows: Sequence[Dict[str, float]], output_path: Path) -> No
 
 
 def _compute_xticks(x_max: int) -> np.ndarray:
+    x_max = max(int(x_max), 1)
     if x_max <= 10:
         return np.arange(1, x_max + 1, dtype=int)
-    return np.unique(np.linspace(1, x_max, num=5, dtype=int))
+
+    ticks: List[int] = [1]
+    ticks.extend(range(10, x_max + 1, 10))
+    if ticks[-1] != x_max:
+        ticks.append(x_max)
+    return np.asarray(ticks, dtype=int)
+
+
+def _marker_indices_for_ticks(x_values: np.ndarray, x_ticks: np.ndarray) -> List[int]:
+    x_vals = np.asarray(x_values, dtype=np.int64).reshape(-1)
+    ticks = np.asarray(x_ticks, dtype=np.int64).reshape(-1)
+    if x_vals.size == 0 or ticks.size == 0:
+        return []
+    return np.flatnonzero(np.isin(x_vals, ticks)).astype(int).tolist()
+
+
+def _endpoint_nudge(x_max: int) -> float:
+    span = max(int(x_max) - 1, 0)
+    if span <= 0:
+        return 0.0
+    return min(0.9, 0.3 * span)
+
+
+def _nudge_endpoint_positions(x: np.ndarray, x_max: int) -> np.ndarray:
+    x_plot = np.asarray(x, dtype=np.float64).reshape(-1).copy()
+    if x_plot.size == 0:
+        return x_plot
+
+    delta = _endpoint_nudge(x_max)
+    if delta <= 0.0:
+        return x_plot
+
+    if np.isclose(x_plot[0], 1.0):
+        x_plot[0] += delta
+    if x_plot.size >= 2 and np.isclose(x_plot[-1], float(x_max)):
+        x_plot[-1] -= delta
+    return x_plot
+
+
+def _set_inset_endpoint_ticks(ax, x_max: int) -> None:
+    x_ticks = _compute_xticks(x_max)
+    tick_pos = x_ticks.astype(np.float64)
+
+    delta = _endpoint_nudge(x_max)
+    if delta > 0.0 and tick_pos.size > 0:
+        left_idx = np.where(np.isclose(tick_pos, 1.0))[0]
+        if left_idx.size > 0:
+            tick_pos[left_idx[0]] += delta
+
+        right_idx = np.where(np.isclose(tick_pos, float(x_max)))[0]
+        if right_idx.size > 0:
+            tick_pos[right_idx[0]] -= delta
+
+    ax.set_xticks(tick_pos)
+    ax.set_xticklabels([str(int(v)) for v in x_ticks])
 
 
 def plot_convergence(
     bf_x: np.ndarray,
     bf_mean: np.ndarray,
+    bf_std: np.ndarray,
     qaoa_x: np.ndarray,
     qaoa_mean: np.ndarray,
+    qaoa_std: np.ndarray,
     es_min_value: Optional[float],
     output_path: Path,
     figsize: Tuple[float, float],
     dpi: int,
 ) -> None:
     import matplotlib.pyplot as plt
-    from matplotlib.lines import Line2D
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     bf_x = np.asarray(bf_x, dtype=np.int64).reshape(-1)
     bf_mean = np.asarray(bf_mean, dtype=np.float64).reshape(-1)
+    bf_std = np.asarray(bf_std, dtype=np.float64).reshape(-1)
     qaoa_x = np.asarray(qaoa_x, dtype=np.int64).reshape(-1)
     qaoa_mean = np.asarray(qaoa_mean, dtype=np.float64).reshape(-1)
+    qaoa_std = np.asarray(qaoa_std, dtype=np.float64).reshape(-1)
+    x_max = int(
+        max(
+            int(np.max(bf_x)) if bf_x.size else 1,
+            int(np.max(qaoa_x)) if qaoa_x.size else 1,
+            1,
+        )
+    )
+    x_ticks = _compute_xticks(x_max)
+    bf_x_plot = _nudge_endpoint_positions(bf_x, x_max)
+    qaoa_x_plot = _nudge_endpoint_positions(qaoa_x, x_max)
 
     fig, ax = plt.subplots(figsize=figsize)
-    bf_markevery = max(1, len(bf_x) // 8)
-    qaoa_markevery = max(1, len(qaoa_x) // 8)
+    bf_markevery = _marker_indices_for_ticks(bf_x, x_ticks)
+    qaoa_markevery = _marker_indices_for_ticks(qaoa_x, x_ticks)
     bf_line, = ax.plot(
-        bf_x,
+        bf_x_plot,
         bf_mean,
         color="#1f77b4",
         linewidth=1.5,
@@ -154,18 +262,8 @@ def plot_convergence(
         markevery=bf_markevery,
         label="BF",
     )
-    bf_valid = np.isfinite(bf_mean) & np.isfinite(bf_std)
-    if np.any(bf_valid):
-        xb = bf_x[bf_valid]
-        ax.fill_between(
-            xb,
-            bf_mean[bf_valid] - bf_std[bf_valid],
-            bf_mean[bf_valid] + bf_std[bf_valid],
-            color="#1f77b4",
-            alpha=0.15,
-        )
     qaoa_line, = ax.plot(
-        qaoa_x,
+        qaoa_x_plot,
         qaoa_mean,
         color="#d62728",
         linewidth=1.5,
@@ -174,52 +272,89 @@ def plot_convergence(
         markevery=qaoa_markevery,
         label="QAOA",
     )
-    q_valid = np.isfinite(qaoa_mean) & np.isfinite(qaoa_std)
-    if np.any(q_valid):
-        xq = qaoa_x[q_valid]
-        ax.fill_between(
-            xq,
-            qaoa_mean[q_valid] - qaoa_std[q_valid],
-            qaoa_mean[q_valid] + qaoa_std[q_valid],
-            color="#d62728",
-            alpha=0.15,
-        )
 
-    x_max = int(max(int(np.max(bf_x)) if bf_x.size else 1, int(np.max(qaoa_x)) if qaoa_x.size else 1, 1))
     ax.set_xlim(1, x_max)
-    ax.set_xticks(_compute_xticks(x_max))
-    optimum_line = None
+    _set_inset_endpoint_ticks(ax, x_max)
+    es_line = None
     if es_min_value is not None and np.isfinite(es_min_value):
-        x_star = float(max(1, int(round(0.9 * x_max))))
-        optimum_line = ax.axhline(
-            y=float(es_min_value),
+        x_es = np.arange(1, x_max + 1, dtype=np.int64)
+        x_es_plot = _nudge_endpoint_positions(x_es, x_max)
+        es_markevery = _marker_indices_for_ticks(x_es, x_ticks)
+        es_line, = ax.plot(
+            x_es_plot,
+            np.full((len(x_es_plot),), float(es_min_value), dtype=np.float64),
             color="black",
             linestyle="--",
             linewidth=1.0,
-            label="Optimum",
+            marker="*",
+            markersize=6.0,
+            markevery=es_markevery,
+            label="ES",
         )
-        ax.plot([x_star], [float(es_min_value)], marker="*", color="black", markersize=7.0, linestyle="None")
 
     ax.set_xlabel("Iteration", fontsize=9)
     ax.set_ylabel("Objective", fontsize=9)
     ax.tick_params(axis="both", labelsize=9)
-    ax.grid(True, alpha=0.3)
-    if optimum_line is not None:
-        optimum_legend = Line2D(
-            [0],
-            [0],
-            color="black",
-            linestyle="--",
-            marker="*",
-            markersize=7.0,
-            linewidth=1.0,
-            label="Optimum",
-        )
-        ax.legend(handles=[optimum_legend, bf_line, qaoa_line], frameon=False, fontsize=9)
+    ax.grid(axis="x", alpha=0.3)
+    if es_line is not None:
+        ax.legend(handles=[es_line, bf_line, qaoa_line], frameon=False, fontsize=9)
     else:
         ax.legend(handles=[bf_line, qaoa_line], frameon=False, fontsize=9)
+
+    zoom_start = 10
+    if x_max > zoom_start:
+        bf_zoom_mask = bf_x >= int(zoom_start)
+        qaoa_zoom_mask = qaoa_x >= int(zoom_start)
+        if np.any(bf_zoom_mask) or np.any(qaoa_zoom_mask):
+            axins = ax.inset_axes([0.50, 0.18, 0.44, 0.34])
+
+            if np.any(bf_zoom_mask):
+                xb = bf_x[bf_zoom_mask]
+                yb = bf_mean[bf_zoom_mask]
+                axins.plot(xb, yb, color="#1f77b4", linewidth=1.0)
+
+            if np.any(qaoa_zoom_mask):
+                xq = qaoa_x[qaoa_zoom_mask]
+                yq = qaoa_mean[qaoa_zoom_mask]
+                axins.plot(xq, yq, color="#d62728", linewidth=1.0)
+
+            if es_min_value is not None and np.isfinite(es_min_value):
+                axins.axhline(float(es_min_value), color="black", linestyle="--", linewidth=0.8)
+
+            axins.set_xlim(float(zoom_start), float(x_max))
+            zoom_ticks = [int(t) for t in _compute_xticks(x_max).tolist() if int(t) >= int(zoom_start)]
+            if len(zoom_ticks) == 0:
+                zoom_ticks = [int(zoom_start), int(x_max)]
+            axins.set_xticks(zoom_ticks)
+            axins.set_xticklabels([""] * len(zoom_ticks))
+            axins.tick_params(axis="x", which="both", bottom=True, labelbottom=False, length=2.0)
+            axins.tick_params(axis="y", labelsize=7)
+            axins.grid(axis="x", alpha=0.2)
+
+            y_candidates: List[np.ndarray] = []
+            if np.any(bf_zoom_mask):
+                y_candidates.append(np.asarray(bf_mean[bf_zoom_mask], dtype=np.float64))
+            if np.any(qaoa_zoom_mask):
+                y_candidates.append(np.asarray(qaoa_mean[qaoa_zoom_mask], dtype=np.float64))
+            if es_min_value is not None and np.isfinite(es_min_value):
+                y_candidates.append(np.asarray([float(es_min_value)], dtype=np.float64))
+
+            if y_candidates:
+                y_all = np.concatenate([arr[np.isfinite(arr)] for arr in y_candidates if arr.size > 0])
+                if y_all.size > 0:
+                    y_min = float(np.min(y_all))
+                    y_max = float(np.max(y_all))
+                    span = max(y_max - y_min, 1e-12)
+                    pad = 0.08 * span
+                    axins.set_ylim(y_min - pad, y_max + pad)
+
+            if hasattr(ax, "indicate_inset_zoom"):
+                ax.indicate_inset_zoom(axins, edgecolor="0.5", alpha=0.8)
+
     fig.tight_layout()
-    fig.savefig(output_path, bbox_inches="tight", dpi=int(dpi))
+    png_path, pdf_path = _paired_figure_paths(output_path)
+    fig.savefig(png_path, bbox_inches="tight", dpi=int(dpi))
+    fig.savefig(pdf_path, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -237,11 +372,13 @@ def plot_qaoa_loss_history(
     x = np.asarray(qaoa_loss_x, dtype=np.int64).reshape(-1)
     mean = np.asarray(qaoa_loss_mean, dtype=np.float64).reshape(-1)
     std = np.asarray(qaoa_loss_std, dtype=np.float64).reshape(-1)
+    x_max = int(max(int(np.max(x)) if x.size else 1, 1))
+    x_plot = _nudge_endpoint_positions(x, x_max)
     markevery = max(1, len(x) // 8)
 
     fig, ax = plt.subplots(figsize=figsize)
     ax.plot(
-        x,
+        x_plot,
         mean,
         color="#d62728",
         linewidth=1.5,
@@ -252,31 +389,86 @@ def plot_qaoa_loss_history(
     )
     valid = np.isfinite(mean) & np.isfinite(std)
     if np.any(valid):
-        xv = x[valid]
+        xv = x_plot[valid]
         ax.fill_between(xv, mean[valid] - std[valid], mean[valid] + std[valid], color="#d62728", alpha=0.12)
 
-    x_max = int(max(int(np.max(x)) if x.size else 1, 1))
     ax.set_xlim(1, x_max)
-    ax.set_xticks(_compute_xticks(x_max))
+    _set_inset_endpoint_ticks(ax, x_max)
     ax.set_xlabel("Iteration", fontsize=9)
     ax.set_ylabel("QAOA Loss", fontsize=9)
     ax.tick_params(axis="both", labelsize=9)
-    ax.grid(True, alpha=0.3)
+    ax.grid(axis="x", alpha=0.3)
     ax.legend(frameon=False, fontsize=9)
     fig.tight_layout()
-    fig.savefig(output_path, bbox_inches="tight", dpi=int(dpi))
+    png_path, pdf_path = _paired_figure_paths(output_path)
+    fig.savefig(png_path, bbox_inches="tight", dpi=int(dpi))
+    fig.savefig(pdf_path, bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_als_relerr_history(
+    als_relerr_mat: np.ndarray,
+    output_path: Path,
+    figsize: Tuple[float, float],
+    dpi: int,
+) -> None:
+    import matplotlib.pyplot as plt
+
+    mat = np.asarray(als_relerr_mat, dtype=np.float64)
+    if mat.ndim != 2 or mat.shape[0] == 0:
+        raise ValueError("als_relerr_mat must be a non-empty 2D array.")
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    x = np.arange(1, mat.shape[1] + 1, dtype=np.int64)
+    mean = np.nanmean(mat, axis=0)
+    std = np.nanstd(mat, axis=0)
+    x_max = int(max(len(x), 1))
+    x_plot = _nudge_endpoint_positions(x, x_max)
+    markevery = max(1, len(x) // 8)
+
+    fig, ax = plt.subplots(figsize=figsize)
+    for row in mat:
+        ax.plot(x_plot, row, color="#aaaaaa", linewidth=0.7, alpha=0.35)
+    ax.plot(
+        x_plot,
+        mean,
+        color="#2ca02c",
+        linewidth=1.5,
+        marker="d",
+        markersize=3.0,
+        markevery=markevery,
+        label="ALS rel. error",
+    )
+    valid = np.isfinite(mean) & np.isfinite(std)
+    if np.any(valid):
+        xv = x_plot[valid]
+        ax.fill_between(xv, mean[valid] - std[valid], mean[valid] + std[valid], color="#2ca02c", alpha=0.12)
+
+    ax.set_xlim(1, x_max)
+    _set_inset_endpoint_ticks(ax, x_max)
+    ax.set_xlabel("ALS Sweep", fontsize=9)
+    ax.set_ylabel("Relative Error", fontsize=9)
+    ax.tick_params(axis="both", labelsize=9)
+    ax.grid(axis="x", alpha=0.3)
+    ax.legend(frameon=False, fontsize=9)
+    fig.tight_layout()
+    png_path, pdf_path = _paired_figure_paths(output_path)
+    fig.savefig(png_path, bbox_inches="tight", dpi=int(dpi))
+    fig.savefig(pdf_path, bbox_inches="tight")
     plt.close(fig)
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Plot synthetic poster outputs from saved artifacts.")
-    parser.add_argument("--in-dir", type=str, default="script/poster")
+    parser.add_argument("--in-dir", type=str, default="script/poster/synth_result")
     parser.add_argument("--mu", type=float, default=None, help="Target mu for selecting artifacts.")
     parser.add_argument("--convergence-npz", type=str, default=None)
     parser.add_argument("--metrics-csv", type=str, default=None)
-    parser.add_argument("--figure-path", type=str, default="script/poster/synth_convergence_qaoa_bf.png")
-    parser.add_argument("--qaoa-loss-figure-path", type=str, default="script/poster/synth_qaoa_loss_history.png")
-    parser.add_argument("--tex-table-path", type=str, default="script/poster/synth_metrics.tex")
+    parser.add_argument("--als-history-csv", type=str, default=None)
+    parser.add_argument("--figure-path", type=str, default="script/poster/synth_fig/synth_convergence_qaoa_bf.png")
+    parser.add_argument("--qaoa-loss-figure-path", type=str, default="script/poster/synth_fig/synth_qaoa_loss_history.png")
+    parser.add_argument("--als-figure-path", type=str, default="script/poster/synth_fig/synth_als_relerr_history.png")
+    parser.add_argument("--tex-table-path", type=str, default="script/poster/synth_fig/synth_metrics.tex")
     parser.add_argument("--figsize", type=str, default="3,2.5")
     parser.add_argument("--dpi", type=int, default=1000)
     return parser.parse_args()
@@ -290,21 +482,23 @@ def main() -> None:
     convergence_path = _resolve_artifact_path(
         explicit_path=args.convergence_npz,
         directory=in_dir,
-        prefix="convergence_mu=",
+        prefix="synth_convergence_mu=",
         suffix=".npz",
         mu=args.mu,
     )
     metrics_path = _resolve_artifact_path(
         explicit_path=args.metrics_csv,
         directory=in_dir,
-        prefix="metrics_mu=",
+        prefix="synth_metrics_mu=",
         suffix=".csv",
         mu=args.mu,
     )
 
     conv = np.load(convergence_path)
     bf_x = conv["bf_x"] if "bf_x" in conv else np.arange(1, len(conv["bf_mean"]) + 1, dtype=np.int64)
+    bf_std = conv["bf_std"] if "bf_std" in conv else np.zeros_like(conv["bf_mean"], dtype=np.float64)
     qaoa_x = conv["qaoa_x"] if "qaoa_x" in conv else np.arange(1, len(conv["qaoa_mean"]) + 1, dtype=np.int64)
+    qaoa_std = conv["qaoa_std"] if "qaoa_std" in conv else np.zeros_like(conv["qaoa_mean"], dtype=np.float64)
     qaoa_loss_x = conv["qaoa_loss_x"] if "qaoa_loss_x" in conv else qaoa_x
     es_min_value = None
     if "es_min_value" in conv:
@@ -315,14 +509,17 @@ def main() -> None:
     plot_convergence(
         bf_x=bf_x,
         bf_mean=conv["bf_mean"],
+        bf_std=bf_std,
         qaoa_x=qaoa_x,
         qaoa_mean=conv["qaoa_mean"],
+        qaoa_std=qaoa_std,
         es_min_value=es_min_value,
         output_path=Path(args.figure_path),
         figsize=figsize,
         dpi=args.dpi,
     )
-    print(f"[info] wrote convergence figure to {args.figure_path}")
+    conv_png, conv_pdf = _paired_figure_paths(Path(args.figure_path))
+    print(f"[info] wrote convergence figures to {conv_png} and {conv_pdf}")
 
     if "qaoa_loss_mean" in conv and "qaoa_loss_std" in conv:
         plot_qaoa_loss_history(
@@ -333,22 +530,45 @@ def main() -> None:
             figsize=figsize,
             dpi=args.dpi,
         )
-        print(f"[info] wrote QAOA loss figure to {args.qaoa_loss_figure_path}")
+        loss_png, loss_pdf = _paired_figure_paths(Path(args.qaoa_loss_figure_path))
+        print(f"[info] wrote QAOA loss figures to {loss_png} and {loss_pdf}")
     else:
         print("[warn] qaoa_loss_mean/std not found in NPZ; skipped QAOA loss plot.")
 
+    als_history_path = Path(args.als_history_csv) if args.als_history_csv else (in_dir / "synth_als_relerr_history.csv")
+    if als_history_path.exists():
+        als_df = pd.read_csv(als_history_path)
+        required_als = {"sweep", "rel_error"}
+        missing_als = sorted(required_als - set(als_df.columns))
+        if missing_als:
+            print(f"[warn] ALS history CSV missing columns {missing_als}; skipped ALS plot.")
+        else:
+            max_sweep = int(np.nanmax(np.asarray(als_df["sweep"], dtype=np.float64)))
+            key_cols = [c for c in ("dataset_path", "data_seed", "run_seed") if c in als_df.columns]
+            traces: List[np.ndarray] = []
+            if key_cols:
+                grouped = als_df.groupby(key_cols, sort=False, dropna=False)
+                for _, sub in grouped:
+                    vals = np.asarray(sub.sort_values("sweep")["rel_error"], dtype=np.float64)
+                    traces.append(_pad_trace(vals, max_sweep))
+            else:
+                vals = np.asarray(als_df.sort_values("sweep")["rel_error"], dtype=np.float64)
+                traces.append(_pad_trace(vals, max_sweep))
+            if traces:
+                als_mat = np.vstack(traces)
+                plot_als_relerr_history(
+                    als_relerr_mat=als_mat,
+                    output_path=Path(args.als_figure_path),
+                    figsize=figsize,
+                    dpi=args.dpi,
+                )
+                als_png, als_pdf = _paired_figure_paths(Path(args.als_figure_path))
+                print(f"[info] wrote ALS convergence figures to {als_png} and {als_pdf}")
+    else:
+        print(f"[warn] ALS history CSV not found: {als_history_path}; skipped ALS plot.")
+
     df = pd.read_csv(metrics_path)
-    needed = {
-        "solver",
-        "mean_Rhat",
-        "std_Rhat",
-        "mean_relerr",
-        "std_relerr",
-        "mean_energy",
-        "std_energy",
-        "mean_gap",
-        "std_gap",
-    }
+    needed = {"solver", "mean_Rhat", "std_Rhat", "mean_relerr", "std_relerr"}
     missing = sorted(needed - set(df.columns))
     if missing:
         raise ValueError(f"metrics CSV is missing columns: {missing}")

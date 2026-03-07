@@ -10,6 +10,7 @@ Run lightweight synthetic poster experiments:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import sys
@@ -60,6 +61,20 @@ def _dtype_from_str(raw: str) -> torch.dtype:
     if key not in mapping:
         raise ValueError(f"Unsupported dtype '{raw}'.")
     return mapping[key]
+
+
+def _scale_mu(mu: float, mode: str, xnorm: float, rank_ref: int) -> float:
+    mode_key = mode.strip().lower()
+    if mode_key == "none":
+        return float(mu)
+    if mode_key == "xnorm":
+        return float(mu) * float(xnorm)
+    if mode_key == "xnorm2":
+        return float(mu) * (float(xnorm) ** 2)
+    if mode_key in ("xnorm2_over_rank", "xnorm2/rank", "xnorm2-over-rank"):
+        denom = max(1, int(rank_ref))
+        return float(mu) * (float(xnorm) ** 2) / float(denom)
+    raise ValueError(f"Unknown mu effect mode '{mode}'.")
 
 
 def _resolve_dataset_path(path_str: str, manifest_dir: Path) -> Path:
@@ -121,6 +136,18 @@ def load_manifest(path: Path) -> List[DatasetRecord]:
     return records
 
 
+def _select_records_by_seed(args: argparse.Namespace, records: Sequence[DatasetRecord]) -> List[DatasetRecord]:
+    if args.seed is not None:
+        selected = [r for r in records if int(r.seed) == int(args.seed)]
+    elif args.seeds:
+        requested = set(_parse_list_int(args.seeds))
+        selected = [r for r in records if int(r.seed) in requested]
+    else:
+        requested = set(range(int(args.seed_start), int(args.seed_start) + int(args.num_seeds)))
+        selected = [r for r in records if int(r.seed) in requested]
+    return sorted(selected, key=lambda r: (int(r.seed), str(r.path)))
+
+
 def _rank1_tensor(vectors: Sequence[torch.Tensor]) -> torch.Tensor:
     order = len(vectors)
     if order == 0:
@@ -152,7 +179,7 @@ def run_overfactored_als(
     log_every: int,
     verbose: bool,
     run_label: str,
-) -> Tuple[List[torch.Tensor], torch.Tensor, float, float]:
+) -> Tuple[List[torch.Tensor], torch.Tensor, float, float, np.ndarray]:
     torch.manual_seed(int(seed))
     model = CPFactorization(
         shape=tuple(X.shape),
@@ -166,19 +193,31 @@ def run_overfactored_als(
 
     xnorm = torch.linalg.norm(X).clamp_min(1e-12)
     t0 = time.time()
+    relerr_trace: List[float] = []
     for sweep in range(int(sweeps)):
         model.als_step(X, normalize=True)
+        err = (torch.linalg.norm(X - model.forward()) / xnorm).item()
+        relerr_trace.append(float(err))
         if verbose and (log_every <= 1 or (sweep + 1) % int(log_every) == 0):
-            err = (torch.linalg.norm(X - model.forward()) / xnorm).item()
             print(
                 f"[als] {run_label} sweep={sweep + 1:03d} "
                 f"rel_error={err:.6e} rank={model.rank}"
             )
     elapsed = time.time() - t0
-    final_rel_error = (torch.linalg.norm(X - model.forward()) / xnorm).item()
+    final_rel_error = (
+        float(relerr_trace[-1])
+        if len(relerr_trace) > 0
+        else (torch.linalg.norm(X - model.forward()) / xnorm).item()
+    )
     factors = [A.detach().clone() for A in model.factors]
     weights = model.weights.detach().clone()
-    return factors, weights, float(final_rel_error), float(elapsed)
+    return (
+        factors,
+        weights,
+        float(final_rel_error),
+        float(elapsed),
+        np.asarray(relerr_trace, dtype=np.float64),
+    )
 
 
 def build_qubo_from_factors(
@@ -403,21 +442,55 @@ def _build_cost_operator_rank_pruning_style(Q: np.ndarray, lin: np.ndarray):
 def build_qaoa_cost_operator(
     Q: np.ndarray,
     q: np.ndarray,
+    verify_inputs: Optional[Dict[str, Tuple[np.ndarray, np.ndarray]]] = None,
+    verify_context: str = "",
 ) -> Tuple[object, Dict[str, float]]:
     """
-    Convert canonical QUBO E(z)=z^TQz+q^Tz into the same upper-triangular/scaled
-    form used in src/rank_prunning/qaoa_rank_prunning.py before building Ising.
+    Convert canonical QUBO E(z)=z^TQz+q^Tz into the same upper-triangular form
+    used in src/rank_prunning/qaoa_rank_prunning.py before building Ising.
     """
     Q_np = np.asarray(Q, dtype=np.float64)
     q_np = np.asarray(q, dtype=np.float64).reshape(-1)
     if Q_np.shape[0] != q_np.shape[0]:
         raise ValueError(f"Q/q mismatch: Q={Q_np.shape}, q={q_np.shape}.")
 
+    if verify_inputs:
+        qaoa_Q = np.ascontiguousarray(Q_np)
+        qaoa_q = np.ascontiguousarray(q_np)
+        labels = ("ES", "BF", "QAOA")
+        all_ok = True
+        checks: List[str] = []
+        for label in labels:
+            ref = verify_inputs.get(label)
+            if ref is None:
+                checks.append(f"{label}=missing")
+                all_ok = False
+                continue
+
+            ref_Q, ref_q = ref
+            ref_Q_np = np.ascontiguousarray(np.asarray(ref_Q, dtype=np.float64))
+            ref_q_np = np.ascontiguousarray(np.asarray(ref_q, dtype=np.float64).reshape(-1))
+            Q_same = bool(np.array_equal(qaoa_Q, ref_Q_np))
+            q_same = bool(np.array_equal(qaoa_q, ref_q_np))
+            all_ok = all_ok and Q_same and q_same
+            checks.append(
+                f"{label}(Q={Q_same},q={q_same},dQ={_max_abs_diff(qaoa_Q, ref_Q_np):.3e},"
+                f"dq={_max_abs_diff(qaoa_q, ref_q_np):.3e},"
+                f"Qh={_array_digest(qaoa_Q)}/{_array_digest(ref_Q_np)},"
+                f"qh={_array_digest(qaoa_q)}/{_array_digest(ref_q_np)})"
+            )
+
+        status = "PASS" if all_ok else "FAIL"
+        prefix = f"{verify_context} " if verify_context else ""
+        print(
+            f"[debug] {prefix}build_qaoa_cost_operator_input_check={status} "
+            + " ".join(checks)
+        )
+
     # rank_prunning-style QUBO matrix: upper-triangular with doubled off-diagonal.
     Q_upper = np.triu(Q_np, 1) * 2.0
     np.fill_diagonal(Q_upper, np.diag(Q_np))
     lin = q_np.copy()
-
     q_max = float(np.max(np.abs(Q_upper))) if Q_upper.size > 0 else 0.0
     lin_max = float(np.max(np.abs(lin))) if lin.size > 0 else 0.0
     scale_ref = max(q_max, lin_max, 1.0)
@@ -426,6 +499,55 @@ def build_qaoa_cost_operator(
 
     op = _build_cost_operator_rank_pruning_style(Q=Q_scaled, lin=lin_scaled)
     return op, {"qubo_scale_ref": float(scale_ref)}
+
+
+def _measure_logical_only(circuit, num_logical: int):
+    from qiskit.circuit import QuantumCircuit
+
+    measured = circuit.copy()
+    if hasattr(measured, "remove_final_measurements"):
+        measured.remove_final_measurements()
+    if int(num_logical) > int(measured.num_qubits):
+        raise ValueError(
+            f"Requested {num_logical} logical qubits, but circuit has {measured.num_qubits} qubits."
+        )
+    wrapped = QuantumCircuit(measured.num_qubits, int(num_logical))
+    wrapped.compose(measured, inplace=True)
+    wrapped.measure(list(range(int(num_logical))), list(range(int(num_logical))))
+    return wrapped
+
+
+def _counts_to_int(counts: Dict) -> Dict[int, int]:
+    if not counts:
+        return {}
+    sample_key = next(iter(counts.keys()))
+    if isinstance(sample_key, int):
+        return {int(k): int(v) for k, v in counts.items()}
+    if isinstance(sample_key, str):
+        return {int(str(k), 2): int(v) for k, v in counts.items()}
+    return {}
+
+
+def _extract_counts_int(result_item) -> Dict[int, int]:
+    data = result_item.data
+    for attr in ("meas", "m"):
+        if hasattr(data, attr):
+            obj = getattr(data, attr)
+            if hasattr(obj, "get_int_counts"):
+                return {int(k): int(v) for k, v in obj.get_int_counts().items()}
+            if hasattr(obj, "get_counts"):
+                return _counts_to_int(obj.get_counts())
+    for name in dir(data):
+        if name.startswith("_"):
+            continue
+        obj = getattr(data, name, None)
+        if obj is None:
+            continue
+        if hasattr(obj, "get_int_counts"):
+            return {int(k): int(v) for k, v in obj.get_int_counts().items()}
+        if hasattr(obj, "get_counts"):
+            return _counts_to_int(obj.get_counts())
+    return {}
 
 
 def _int_to_binary_vector(value: int, width: int) -> np.ndarray:
@@ -442,7 +564,9 @@ def qaoa_search_qubo(
     maxiter: int,
     seed: int,
     optimizer: str,
-) -> Tuple[np.ndarray, float, np.ndarray, np.ndarray]:
+    verify_inputs_for_cost_op: Optional[Dict[str, Tuple[np.ndarray, np.ndarray]]] = None,
+    verify_context: str = "",
+) -> Tuple[np.ndarray, float, np.ndarray, np.ndarray, np.ndarray]:
     try:
         from qiskit.circuit.library import QAOAAnsatz
         from qiskit.transpiler import generate_preset_pass_manager
@@ -464,22 +588,31 @@ def qaoa_search_qubo(
 
     if rank == 0:
         z0 = np.zeros((0,), dtype=np.int8)
-        return z0, 0.0, np.zeros((maxiter,), dtype=np.float64), np.zeros((maxiter,), dtype=np.float64)
+        zhist = np.zeros((maxiter,), dtype=np.float64)
+        return z0, 0.0, zhist, zhist.copy(), zhist.copy()
 
-    cost_hamiltonian, qubo_meta = build_qaoa_cost_operator(Q=Q, q=q)
+    cost_hamiltonian, qubo_meta = build_qaoa_cost_operator(
+        Q=Q,
+        q=q,
+        verify_inputs=verify_inputs_for_cost_op,
+        verify_context=verify_context,
+    )
     scale_ref = float(qubo_meta.get("qubo_scale_ref", 1.0))
     if not (scale_ref > 0.0):
         scale_ref = 1.0
     top_k = max(1, rank)
 
     backend = AerSimulator(shots=shots)
-    backend.seed_simulator = int(seed)
-    pass_manager = generate_preset_pass_manager(optimization_level=0, backend=backend)
+    if hasattr(backend, "seed_simulator"):
+        backend.seed_simulator = int(seed)
+    pass_manager = generate_preset_pass_manager(
+        optimization_level=0,
+        backend=backend,
+    )
 
     ansatz = QAOAAnsatz(cost_operator=cost_hamiltonian, reps=qaoa_p)
     candidate_circuit = pass_manager.run(ansatz)
-    sample_template = candidate_circuit.copy()
-    sample_template.measure_all()
+    sample_template = _measure_logical_only(candidate_circuit, rank)
 
     init_beta = math.pi / 2.0
     init_gamma = math.pi
@@ -490,16 +623,21 @@ def qaoa_search_qubo(
     best_energy = float("inf")
     best_mask = np.zeros((rank,), dtype=np.int8)
     trace: List[float] = []
+    iter_trace: List[float] = []
     objective_func_vals: List[float] = []
 
     with Session(backend=backend) as session:
         estimator = Estimator(mode=session)
-        estimator.options.default_shots = shots
-        estimator.seed_estimator = int(seed)
+        if hasattr(estimator, "options"):
+            estimator.options.default_shots = int(shots)
+        if hasattr(estimator, "seed_estimator"):
+            estimator.seed_estimator = int(seed)
 
         sampler = Sampler(mode=session)
-        sampler.options.default_shots = shots
-        sampler.seed_estimator = int(seed)
+        if hasattr(sampler, "options"):
+            sampler.options.default_shots = int(shots)
+        if hasattr(sampler, "seed_estimator"):
+            sampler.seed_estimator = int(seed)
 
         def objective(params: np.ndarray) -> float:
             nonlocal best_energy, best_mask
@@ -513,12 +651,12 @@ def qaoa_search_qubo(
             est_pub = (candidate_circuit, isa_hamiltonian, np.asarray(params, dtype=np.float64))
             est_job = estimator.run([est_pub])
             est_val_scaled = float(est_job.result()[0].data.evs)
-            # Convert back to unscaled QUBO objective units for plotting.
             objective_func_vals.append(est_val_scaled * scale_ref)
 
             sampled_circuit = sample_template.assign_parameters(np.asarray(params, dtype=np.float64))
             sample_job = sampler.run([(sampled_circuit,)], shots=shots)
-            counts = sample_job.result()[0].data.meas.get_int_counts()
+            counts = _extract_counts_int(sample_job.result()[0])
+            iter_energy = float("inf")
             if counts:
                 keys = list(counts.keys())
                 values = np.asarray(list(counts.values()), dtype=np.float64)
@@ -527,10 +665,13 @@ def qaoa_search_qubo(
                 for idx in top_indices:
                     z = _int_to_binary_vector(int(keys[idx]), rank)
                     E = qubo_energy(z, Q, q)
+                    if E < iter_energy:
+                        iter_energy = E
                     if E < best_energy:
                         best_energy = E
                         best_mask = z.copy()
             trace.append(best_energy if np.isfinite(best_energy) else float("inf"))
+            iter_trace.append(iter_energy if np.isfinite(iter_energy) else float("nan"))
             return est_val_scaled
 
         result = minimize(
@@ -545,7 +686,7 @@ def qaoa_search_qubo(
             final_params = np.asarray(result.x, dtype=np.float64)
             sampled_circuit = sample_template.assign_parameters(final_params)
             sample_job = sampler.run([(sampled_circuit,)], shots=shots)
-            counts = sample_job.result()[0].data.meas.get_int_counts()
+            counts = _extract_counts_int(sample_job.result()[0])
             if counts:
                 keys = list(counts.keys())
                 values = np.asarray(list(counts.values()), dtype=np.float64)
@@ -571,6 +712,16 @@ def qaoa_search_qubo(
             mode="constant",
             constant_values=fill_val,
         )
+    iter_arr = np.asarray(iter_trace[:maxiter], dtype=np.float64)
+    if iter_arr.size < maxiter:
+        if iter_arr.size == 0:
+            iter_arr = np.full((maxiter,), np.nan, dtype=np.float64)
+        else:
+            iter_arr = np.pad(
+                iter_arr,
+                (0, maxiter - iter_arr.size),
+                mode="edge",
+            )
     obj_arr = np.asarray(objective_func_vals[:maxiter], dtype=np.float64)
     if obj_arr.size < maxiter:
         if obj_arr.size == 0:
@@ -581,7 +732,7 @@ def qaoa_search_qubo(
                 (0, maxiter - obj_arr.size),
                 mode="edge",
             )
-    return best_mask, float(best_energy), trace_arr, obj_arr
+    return best_mask, float(best_energy), trace_arr, obj_arr, iter_arr
 
 
 def reconstruct_from_mask(
@@ -608,11 +759,17 @@ def evaluate_mask_metrics(
     rel_err = float(torch.linalg.norm(X - X_hat).item() / max(float(X_norm), 1e-12))
     R_hat = int(np.asarray(mask, dtype=np.int64).sum())
     gap = float(energy - es_energy) if es_energy is not None else float("nan")
+    delta = (
+        float(abs(float(energy) - float(es_energy)) / max(abs(float(es_energy)), 1e-12))
+        if es_energy is not None
+        else float("nan")
+    )
     return {
         "Rhat": float(R_hat),
         "relerr": rel_err,
         "energy": float(energy),
         "gap": gap,
+        "delta": delta,
     }
 
 
@@ -670,11 +827,52 @@ def _prepare_qubo_inputs(Q: np.ndarray, q: np.ndarray) -> Tuple[np.ndarray, np.n
     return np.ascontiguousarray(Q_arr), np.ascontiguousarray(q_arr)
 
 
+def _array_digest(arr: np.ndarray) -> str:
+    arr_c = np.ascontiguousarray(np.asarray(arr, dtype=np.float64))
+    return hashlib.sha256(arr_c.tobytes(order="C")).hexdigest()[:12]
+
+
+def _max_abs_diff(a: np.ndarray, b: np.ndarray) -> float:
+    a_arr = np.asarray(a, dtype=np.float64)
+    b_arr = np.asarray(b, dtype=np.float64)
+    if a_arr.shape != b_arr.shape:
+        return float("inf")
+    if a_arr.size == 0:
+        return 0.0
+    return float(np.max(np.abs(a_arr - b_arr)))
+
+
+def _debug_verify_qubo_inputs(
+    Q_es: np.ndarray,
+    q_es: np.ndarray,
+    Q_bf: np.ndarray,
+    q_bf: np.ndarray,
+    Q_qaoa: np.ndarray,
+    q_qaoa: np.ndarray,
+    seed: int,
+    mu: float,
+) -> None:
+    q_same = bool(np.array_equal(q_es, q_bf) and np.array_equal(q_es, q_qaoa))
+    Q_same = bool(np.array_equal(Q_es, Q_bf) and np.array_equal(Q_es, Q_qaoa))
+    status = "PASS" if (Q_same and q_same) else "FAIL"
+
+    q_diff = max(_max_abs_diff(q_es, q_bf), _max_abs_diff(q_es, q_qaoa))
+    Q_diff = max(_max_abs_diff(Q_es, Q_bf), _max_abs_diff(Q_es, Q_qaoa))
+    print(
+        f"[debug] seed={seed} mu={_format_mu(mu)} qubo_input_check={status} "
+        f"Q_equal={Q_same} q_equal={q_same} "
+        f"Q_hash[ES/BF/QAOA]={_array_digest(Q_es)}/{_array_digest(Q_bf)}/{_array_digest(Q_qaoa)} "
+        f"q_hash[ES/BF/QAOA]={_array_digest(q_es)}/{_array_digest(q_bf)}/{_array_digest(q_qaoa)} "
+        f"max_abs_diff_Q={Q_diff:.3e} max_abs_diff_q={q_diff:.3e}"
+    )
+
+
 def _metric_row(solver: str, values: Dict[str, List[float]]) -> Dict[str, float]:
     mean_rhat, std_rhat = _mean_std(values["Rhat"])
     mean_relerr, std_relerr = _mean_std(values["relerr"])
     mean_energy, std_energy = _mean_std(values["energy"])
     mean_gap, std_gap = _mean_std(values["gap"])
+    mean_delta, std_delta = _mean_std(values["delta"] if "delta" in values else [])
     return {
         "solver": solver,
         "mean_Rhat": mean_rhat,
@@ -685,6 +883,8 @@ def _metric_row(solver: str, values: Dict[str, List[float]]) -> Dict[str, float]
         "std_energy": std_energy,
         "mean_gap": mean_gap,
         "std_gap": std_gap,
+        "mean_delta": mean_delta,
+        "std_delta": std_delta,
     }
 
 
@@ -699,40 +899,109 @@ def _fmt_latex_pm(mean: float, std: float, sci: bool = False) -> str:
 def write_latex_table(rows: Sequence[Dict[str, float]], output_path: Path) -> None:
     by_method = {str(r["solver"]): r for r in rows}
 
-    def _row_line(method: str) -> str:
-        row = by_method.get(method)
+    def _row_values(solver_key: str, is_es: bool = False) -> Tuple[str, str, str]:
+        row = by_method.get(solver_key)
         if row is None:
-            return (
-                f"{method} & \\textit{{--}} & \\textit{{--}} & \\textit{{--}} & \\textit{{--}} \\\\"
-            )
+            return r"\textit{--}", r"\textit{--}", "0" if is_es else r"\textit{--}"
         rhat = _fmt_latex_pm(float(row["mean_Rhat"]), float(row["std_Rhat"]), sci=False)
         rel = _fmt_latex_pm(float(row["mean_relerr"]), float(row["std_relerr"]), sci=True)
-        energy = _fmt_latex_pm(float(row["mean_energy"]), float(row["std_energy"]), sci=True)
-        if method == "ES":
-            gap = "0"
+        if is_es:
+            delta = "0"
         else:
-            gap = _fmt_latex_pm(float(row["mean_gap"]), float(row["std_gap"]), sci=True)
-        return f"{method} & {rhat} & {rel} & {energy} & {gap} \\\\"
+            delta = _fmt_latex_pm(
+                float(row.get("mean_delta", float("nan"))),
+                float(row.get("std_delta", float("nan"))),
+                sci=True,
+            )
+        return rhat, rel, delta
+
+    es_rhat, es_rel, es_delta = _row_values("ES", is_es=True)
+    bf_rhat, bf_rel, bf_delta = _row_values("BF", is_es=False)
+    sim_rhat, sim_rel, sim_delta = _row_values("QAOA", is_es=False)
 
     lines = [
         r"\begin{table}[t]",
-        r"\caption{Result on synthetic dataset.}",
+        r"\caption{Synthetic dataset: placeholder results for ES, BF, simulator-QAOA, and hardware-QAOA on the induced rank-selection QUBO.}",
         r"\label{tab:synth_metrics}",
         r"\centering",
         r"\scriptsize",
-        r"\begin{tabular}{@{}lcccc@{}}",
+        r"\setlength{\tabcolsep}{5pt}",
+        r"\renewcommand{\arraystretch}{1.05}",
+        r"\begin{tabular}{@{}lccc@{}}",
         r"\toprule",
-        r"Method & \(\hat R\) & Rel.\ error \(\downarrow\) & \(E(\mathbf{z})\) \(\downarrow\) & Gap to ES \(\downarrow\) \\",
+        r"Method & \(\hat{R}\) & Rel.\ error \(\downarrow\) & \(\bar{\delta}\) \(\downarrow\) \\",
         r"\midrule",
-        _row_line("ES"),
-        _row_line("BF"),
-        _row_line("QAOA"),
+        f"ES                               & {es_rhat} & {es_rel} & {es_delta} \\\\",
+        f"BF                               & {bf_rhat} & {bf_rel} & {bf_delta} \\\\",
+        f"QAOA (simulator)                 & {sim_rhat} & {sim_rel} & {sim_delta} \\\\",
+        r"QAOA (real device)               & \textit{--} & \textit{--} & \textit{--} \\",
         r"\bottomrule",
         r"\end{tabular}",
         r"\end{table}",
     ]
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text("\n".join(lines) + "\n")
+
+
+def _compute_xticks(x_max: int) -> np.ndarray:
+    x_max = max(int(x_max), 1)
+    if x_max <= 10:
+        return np.arange(1, x_max + 1, dtype=int)
+
+    ticks: List[int] = [1]
+    ticks.extend(range(10, x_max + 1, 10))
+    if ticks[-1] != x_max:
+        ticks.append(x_max)
+    return np.asarray(ticks, dtype=int)
+
+
+def _marker_indices_for_ticks(x_values: np.ndarray, x_ticks: np.ndarray) -> List[int]:
+    x_vals = np.asarray(x_values, dtype=np.int64).reshape(-1)
+    ticks = np.asarray(x_ticks, dtype=np.int64).reshape(-1)
+    if x_vals.size == 0 or ticks.size == 0:
+        return []
+    return np.flatnonzero(np.isin(x_vals, ticks)).astype(int).tolist()
+
+
+def _endpoint_nudge(x_max: int) -> float:
+    span = max(int(x_max) - 1, 0)
+    if span <= 0:
+        return 0.0
+    return min(0.9, 0.3 * span)
+
+
+def _nudge_endpoint_positions(x: np.ndarray, x_max: int) -> np.ndarray:
+    x_plot = np.asarray(x, dtype=np.float64).reshape(-1).copy()
+    if x_plot.size == 0:
+        return x_plot
+
+    delta = _endpoint_nudge(x_max)
+    if delta <= 0.0:
+        return x_plot
+
+    if np.isclose(x_plot[0], 1.0):
+        x_plot[0] += delta
+    if x_plot.size >= 2 and np.isclose(x_plot[-1], float(x_max)):
+        x_plot[-1] -= delta
+    return x_plot
+
+
+def _set_inset_endpoint_ticks(ax, x_max: int) -> None:
+    x_ticks = _compute_xticks(x_max)
+
+    tick_pos = x_ticks.astype(np.float64)
+    delta = _endpoint_nudge(x_max)
+    if delta > 0.0 and tick_pos.size > 0:
+        left_idx = np.where(np.isclose(tick_pos, 1.0))[0]
+        if left_idx.size > 0:
+            tick_pos[left_idx[0]] += delta
+
+        right_idx = np.where(np.isclose(tick_pos, float(x_max)))[0]
+        if right_idx.size > 0:
+            tick_pos[right_idx[0]] -= delta
+
+    ax.set_xticks(tick_pos)
+    ax.set_xticklabels([str(int(v)) for v in x_ticks])
 
 
 def plot_convergence(
@@ -743,22 +1012,26 @@ def plot_convergence(
     use_gap: bool,
     es_min_value: Optional[float],
     output_path: Path,
+    show_zoom: bool = True,
 ) -> None:
     try:
         import matplotlib.pyplot as plt
-        from matplotlib.lines import Line2D
     except ImportError as exc:  # pragma: no cover - dependency guard
         raise RuntimeError("matplotlib is required to create the convergence plot.") from exc
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     x_bf = np.arange(1, len(bf_mean) + 1)
     x_qaoa = np.arange(1, len(qaoa_mean) + 1)
-    bf_markevery = max(1, len(x_bf) // 8)
-    qaoa_markevery = max(1, len(x_qaoa) // 8)
+    x_max = int(max(len(x_bf), len(x_qaoa), 1))
+    x_ticks = _compute_xticks(x_max)
+    x_bf_plot = _nudge_endpoint_positions(x_bf, x_max)
+    x_qaoa_plot = _nudge_endpoint_positions(x_qaoa, x_max)
+    bf_markevery = _marker_indices_for_ticks(x_bf, x_ticks)
+    qaoa_markevery = _marker_indices_for_ticks(x_qaoa, x_ticks)
 
     fig, ax = plt.subplots(figsize=(3.0, 2.5))
     bf_line, = ax.plot(
-        x_bf,
+        x_bf_plot,
         bf_mean,
         color="#1f77b4",
         linewidth=1.5,
@@ -767,18 +1040,8 @@ def plot_convergence(
         markevery=bf_markevery,
         label="BF",
     )
-    bf_valid = np.isfinite(bf_mean) & np.isfinite(bf_std)
-    if np.any(bf_valid):
-        xb = x_bf[bf_valid]
-        ax.fill_between(
-            xb,
-            bf_mean[bf_valid] - bf_std[bf_valid],
-            bf_mean[bf_valid] + bf_std[bf_valid],
-            color="#1f77b4",
-            alpha=0.15,
-        )
     qaoa_line, = ax.plot(
-        x_qaoa,
+        x_qaoa_plot,
         qaoa_mean,
         color="#d62728",
         linewidth=1.5,
@@ -787,59 +1050,83 @@ def plot_convergence(
         markevery=qaoa_markevery,
         label="QAOA",
     )
-    q_valid = np.isfinite(qaoa_mean) & np.isfinite(qaoa_std)
-    if np.any(q_valid):
-        xq = x_qaoa[q_valid]
-        ax.fill_between(
-            xq,
-            qaoa_mean[q_valid] - qaoa_std[q_valid],
-            qaoa_mean[q_valid] + qaoa_std[q_valid],
-            color="#d62728",
-            alpha=0.15,
-        )
-    x_max = int(max(len(x_bf), len(x_qaoa), 1))
     ax.set_xlim(1, x_max)
-    if x_max <= 10:
-        x_ticks = np.arange(1, x_max + 1, dtype=int)
-    else:
-        x_ticks = np.unique(np.linspace(1, x_max, num=5, dtype=int))
-    ax.set_xticks(x_ticks)
-    optimum_line = None
+    _set_inset_endpoint_ticks(ax, x_max)
+    es_line = None
     if es_min_value is not None and np.isfinite(es_min_value):
-        x_es = float(max(1, int(round(0.9 * x_max))))
-        optimum_line = ax.axhline(
-            y=float(es_min_value),
+        x_es = np.arange(1, x_max + 1, dtype=np.int64)
+        x_es_plot = _nudge_endpoint_positions(x_es, x_max)
+        es_markevery = _marker_indices_for_ticks(x_es, x_ticks)
+        es_line, = ax.plot(
+            x_es_plot,
+            np.full((len(x_es_plot),), float(es_min_value), dtype=np.float64),
             color="black",
             linestyle="--",
             linewidth=1.0,
-            label="Optimum",
-        )
-        ax.plot(
-            [x_es],
-            [float(es_min_value)],
             marker="*",
-            color="black",
-            markersize=7.0,
-            linestyle="None",
+            markersize=6.0,
+            markevery=es_markevery,
+            label="ES",
         )
     ax.set_xlabel("Iteration", fontsize=9)
     ax.set_ylabel("Objective", fontsize=9)
     ax.tick_params(axis="both", labelsize=9)
-    ax.grid(True, alpha=0.3)
-    if optimum_line is not None:
-        optimum_legend = Line2D(
-            [0],
-            [0],
-            color="black",
-            linestyle="--",
-            marker="*",
-            markersize=7.0,
-            linewidth=1.0,
-            label="Optimum",
-        )
-        ax.legend(handles=[optimum_legend, bf_line, qaoa_line], frameon=False, fontsize=9)
+    ax.grid(axis="x", alpha=0.3)
+    if es_line is not None:
+        ax.legend(handles=[es_line, bf_line, qaoa_line], frameon=False, fontsize=9)
     else:
         ax.legend(handles=[bf_line, qaoa_line], frameon=False, fontsize=9)
+
+    zoom_start = 10
+    if show_zoom and x_max > zoom_start:
+        bf_zoom_mask = x_bf >= int(zoom_start)
+        qaoa_zoom_mask = x_qaoa >= int(zoom_start)
+        if np.any(bf_zoom_mask) or np.any(qaoa_zoom_mask):
+            axins = ax.inset_axes([0.50, 0.18, 0.44, 0.34])
+
+            if np.any(bf_zoom_mask):
+                xb = x_bf[bf_zoom_mask]
+                yb = bf_mean[bf_zoom_mask]
+                axins.plot(xb, yb, color="#1f77b4", linewidth=1.0)
+
+            if np.any(qaoa_zoom_mask):
+                xq = x_qaoa[qaoa_zoom_mask]
+                yq = qaoa_mean[qaoa_zoom_mask]
+                axins.plot(xq, yq, color="#d62728", linewidth=1.0)
+
+            if es_min_value is not None and np.isfinite(es_min_value):
+                axins.axhline(float(es_min_value), color="black", linestyle="--", linewidth=0.8)
+
+            axins.set_xlim(float(zoom_start), float(x_max))
+            zoom_ticks = [int(t) for t in _compute_xticks(x_max).tolist() if int(t) >= int(zoom_start)]
+            if len(zoom_ticks) == 0:
+                zoom_ticks = [int(zoom_start), int(x_max)]
+            axins.set_xticks(zoom_ticks)
+            axins.set_xticklabels([""] * len(zoom_ticks))
+            axins.tick_params(axis="x", which="both", bottom=True, labelbottom=False, length=2.0)
+            axins.tick_params(axis="y", labelsize=7)
+            axins.grid(axis="x", alpha=0.2)
+
+            y_candidates: List[np.ndarray] = []
+            if np.any(bf_zoom_mask):
+                y_candidates.append(np.asarray(bf_mean[bf_zoom_mask], dtype=np.float64))
+            if np.any(qaoa_zoom_mask):
+                y_candidates.append(np.asarray(qaoa_mean[qaoa_zoom_mask], dtype=np.float64))
+            if es_min_value is not None and np.isfinite(es_min_value):
+                y_candidates.append(np.asarray([float(es_min_value)], dtype=np.float64))
+
+            if y_candidates:
+                y_all = np.concatenate([arr[np.isfinite(arr)] for arr in y_candidates if arr.size > 0])
+                if y_all.size > 0:
+                    y_min = float(np.min(y_all))
+                    y_max = float(np.max(y_all))
+                    span = max(y_max - y_min, 1e-12)
+                    pad = 0.08 * span
+                    axins.set_ylim(y_min - pad, y_max + pad)
+
+            if hasattr(ax, "indicate_inset_zoom"):
+                ax.indicate_inset_zoom(axins, edgecolor="0.5", alpha=0.8)
+
     fig.tight_layout()
     fig.savefig(output_path, bbox_inches="tight", dpi=1000)
     plt.close(fig)
@@ -858,14 +1145,16 @@ def plot_qaoa_loss_history(
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     x = np.arange(1, len(qaoa_loss_mean) + 1)
+    x_max = int(max(len(x), 1))
+    x_plot = _nudge_endpoint_positions(x, x_max)
     markevery = max(1, len(x) // 8)
 
     fig, ax = plt.subplots(figsize=(3.0, 2.5))
     if qaoa_loss_mat.size > 0:
         for row in qaoa_loss_mat:
-            ax.plot(x, row, color="#aaaaaa", linewidth=0.7, alpha=0.35)
+            ax.plot(x_plot, row, color="#aaaaaa", linewidth=0.7, alpha=0.35)
     ax.plot(
-        x,
+        x_plot,
         qaoa_loss_mean,
         color="#d62728",
         linewidth=1.5,
@@ -874,16 +1163,11 @@ def plot_qaoa_loss_history(
         markevery=markevery,
         label="QAOA loss",
     )
-    x_max = int(max(len(x), 1))
     ax.set_xlim(1, x_max)
-    if x_max <= 10:
-        x_ticks = np.arange(1, x_max + 1, dtype=int)
-    else:
-        x_ticks = np.unique(np.linspace(1, x_max, num=5, dtype=int))
-    ax.set_xticks(x_ticks)
+    _set_inset_endpoint_ticks(ax, x_max)
     valid = np.isfinite(qaoa_loss_mean) & np.isfinite(qaoa_loss_std)
     if np.any(valid):
-        x_valid = x[valid]
+        x_valid = x_plot[valid]
         y_lo = qaoa_loss_mean[valid] - qaoa_loss_std[valid]
         y_hi = qaoa_loss_mean[valid] + qaoa_loss_std[valid]
         ax.fill_between(x_valid, y_lo, y_hi, color="#d62728", alpha=0.12)
@@ -891,11 +1175,71 @@ def plot_qaoa_loss_history(
     ax.set_xlabel("Iteration", fontsize=9)
     ax.set_ylabel("QAOA Loss", fontsize=9)
     ax.tick_params(axis="both", labelsize=9)
-    ax.grid(True, alpha=0.3)
+    ax.grid(axis="x", alpha=0.3)
     ax.legend(frameon=False, fontsize=9)
     fig.tight_layout()
     fig.savefig(output_path, bbox_inches="tight", dpi=1000)
     plt.close(fig)
+
+
+def _paired_output_paths(output_path: Path) -> Tuple[Path, Path]:
+    base = output_path.with_suffix("") if output_path.suffix else output_path
+    return base.with_suffix(".png"), base.with_suffix(".pdf")
+
+
+def plot_als_relerr_history(
+    als_relerr_mat: np.ndarray,
+    output_path: Path,
+) -> Tuple[Path, Path]:
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError as exc:  # pragma: no cover - dependency guard
+        raise RuntimeError("matplotlib is required to create ALS convergence plots.") from exc
+
+    mat = np.asarray(als_relerr_mat, dtype=np.float64)
+    if mat.ndim != 2 or mat.shape[0] == 0:
+        raise ValueError("als_relerr_mat must be a non-empty 2D array.")
+
+    mean = np.nanmean(mat, axis=0)
+    std = np.nanstd(mat, axis=0)
+    x = np.arange(1, mat.shape[1] + 1, dtype=np.int64)
+    x_max = int(max(len(x), 1))
+    x_plot = _nudge_endpoint_positions(x, x_max)
+    markevery = max(1, len(x) // 8)
+
+    fig, ax = plt.subplots(figsize=(3.0, 2.5))
+    for row in mat:
+        ax.plot(x_plot, row, color="#aaaaaa", linewidth=0.7, alpha=0.35)
+    ax.plot(
+        x_plot,
+        mean,
+        color="#2ca02c",
+        linewidth=1.5,
+        marker="d",
+        markersize=3.0,
+        markevery=markevery,
+        label="ALS rel. error",
+    )
+    valid = np.isfinite(mean) & np.isfinite(std)
+    if np.any(valid):
+        xv = x_plot[valid]
+        ax.fill_between(xv, mean[valid] - std[valid], mean[valid] + std[valid], color="#2ca02c", alpha=0.12)
+
+    ax.set_xlim(1, x_max)
+    _set_inset_endpoint_ticks(ax, x_max)
+    ax.set_xlabel("ALS Sweep", fontsize=9)
+    ax.set_ylabel("Relative Error", fontsize=9)
+    ax.tick_params(axis="both", labelsize=9)
+    ax.grid(axis="x", alpha=0.3)
+    ax.legend(frameon=False, fontsize=9)
+    fig.tight_layout()
+
+    png_path, pdf_path = _paired_output_paths(output_path)
+    png_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(png_path, bbox_inches="tight", dpi=1000)
+    fig.savefig(pdf_path, bbox_inches="tight")
+    plt.close(fig)
+    return png_path, pdf_path
 
 
 def parse_args() -> argparse.Namespace:
@@ -918,37 +1262,70 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="If set, keep only records with this seed.",
     )
+    parser.add_argument(
+        "--seeds",
+        type=str,
+        default=None,
+        help="Comma-separated dataset seeds. Ignored when --seed is set.",
+    )
+    parser.add_argument("--num-seeds", type=int, default=1)
+    parser.add_argument("--seed-start", type=int, default=0)
     parser.add_argument("--R-over", type=int, default=20, dest="R_over")
     parser.add_argument("--als-sweeps", type=int, default=200)
     parser.add_argument("--ridge", type=float, default=1e-6)
-    parser.add_argument("--mu-values", type=str, default="0.05,0.10,0.20")
+    parser.add_argument("--mu-values", type=str, default="0.10")
     parser.add_argument("--plot-mu", type=float, default=0.10)
+    parser.add_argument(
+        "--mu-effect",
+        "--mu-scale",
+        dest="mu_effect",
+        type=str,
+        default="xnorm2_over_rank",
+        choices=("none", "xnorm", "xnorm2", "xnorm2_over_rank"),
+        help=(
+            "Scale mu to match data magnitude. "
+            "'xnorm2_over_rank' treats mu as a per-component penalty relative to ||X||_F^2."
+        ),
+    )
     parser.add_argument("--qaoa-p", type=int, default=2)
     parser.add_argument("--shots", type=int, default=4096)
-    parser.add_argument("--qaoa-maxiter", type=int, default=200)
+    parser.add_argument("--qaoa-maxiter", type=int, default=40)
     parser.add_argument(
         "--qaoa-optimizer",
         type=str,
         default="COBYLA",
         help="Optimizer method passed to scipy.optimize.minimize.",
     )
-    parser.add_argument("--bf-max-evals", type=int, default=200)
+    parser.add_argument("--bf-max-evals", type=int, default=40)
     parser.add_argument("--bf-restarts", type=int, default=1)
-    parser.add_argument("--out-dir", type=str, default="script/poster")
+    parser.add_argument(
+        "--debug-verify-qubo-inputs",
+        action="store_true",
+        help=(
+            "Print strict verification that ES/BF/QAOA receive identical QUBO inputs "
+            "(Q matrix and q vector)."
+        ),
+    )
+    parser.add_argument("--out-dir", type=str, default="script/poster/synth_result")
     parser.add_argument(
         "--figure-path",
         type=str,
-        default="script/poster/synth_convergence_qaoa_bf.png",
+        default="script/poster/synth_result/synth_convergence_qaoa_bf.png",
     )
     parser.add_argument(
         "--qaoa-loss-figure-path",
         type=str,
-        default="script/poster/synth_qaoa_loss_history.png",
+        default="script/poster/synth_result/synth_qaoa_loss_history.png",
+    )
+    parser.add_argument(
+        "--als-figure-path",
+        type=str,
+        default="script/poster/synth_result/synth_als_relerr_history.png",
     )
     parser.add_argument(
         "--tex-table-path",
         type=str,
-        default="script/poster/synth_metrics.tex",
+        default="script/poster/synth_result/synth_metrics.tex",
         help="Path to write the filled LaTeX metrics table (for --plot-mu).",
     )
     parser.add_argument("--device", type=str, default="cpu")
@@ -980,6 +1357,8 @@ def main() -> None:
     figure_path.parent.mkdir(parents=True, exist_ok=True)
     qaoa_loss_figure_path = Path(args.qaoa_loss_figure_path)
     qaoa_loss_figure_path.parent.mkdir(parents=True, exist_ok=True)
+    als_figure_path = Path(args.als_figure_path)
+    als_figure_path.parent.mkdir(parents=True, exist_ok=True)
     tex_table_path = Path(args.tex_table_path)
     tex_table_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -988,15 +1367,34 @@ def main() -> None:
         records.extend(load_manifest(manifest_path))
     if not records:
         raise SystemExit("No dataset records found in the selected manifests.")
-    if args.seed is not None:
-        records = [r for r in records if int(r.seed) == int(args.seed)]
-        if not records:
+    records = _select_records_by_seed(args, records)
+    if not records:
+        if args.seed is not None:
             raise SystemExit(f"No dataset records found for seed={args.seed}.")
+        raise SystemExit("No dataset records found for the selected seed range/list.")
+
+    run_config = {
+        "script": str(Path(__file__).resolve()),
+        "timestamp_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "argv": list(sys.argv),
+        "args": dict(vars(args)),
+        "resolved": {
+            "manifest_paths": [str(p) for p in manifests],
+            "num_records": int(len(records)),
+            "record_seeds": sorted({int(r.seed) for r in records}),
+            "mu_values": [float(mu) for mu in mu_values],
+            "plot_mu": float(plot_mu),
+        },
+    }
+    run_config_path = out_dir / "synth_run_config.json"
+    run_config_path.write_text(json.dumps(run_config, indent=2) + "\n")
+    print(f"[info] wrote run config to {run_config_path}")
 
     print(f"[info] loaded {len(records)} dataset records.")
     print(
         f"[info] config R_over={args.R_over} als_sweeps={args.als_sweeps} "
-        f"bf_max_evals={args.bf_max_evals} qaoa_maxiter={args.qaoa_maxiter}"
+        f"bf_max_evals={args.bf_max_evals} qaoa_maxiter={args.qaoa_maxiter} "
+        f"mu_effect={args.mu_effect}"
     )
     if int(args.R_over) > 20:
         raise SystemExit(
@@ -1008,14 +1406,17 @@ def main() -> None:
     metrics_by_mu: Dict[float, Dict[str, Dict[str, List[float]]]] = {}
     for mu in mu_values:
         metrics_by_mu[mu] = {
-            solver: {"Rhat": [], "relerr": [], "energy": [], "gap": []}
+            solver: {"Rhat": [], "relerr": [], "energy": [], "gap": [], "delta": []}
             for solver in solvers
         }
 
     bf_plot_traces: List[np.ndarray] = []
     qaoa_plot_traces: List[np.ndarray] = []
     qaoa_loss_plot_traces: List[np.ndarray] = []
+    qaoa_iter_plot_traces: List[np.ndarray] = []
     es_plot_values: List[float] = []
+    als_plot_traces: List[np.ndarray] = []
+    als_trace_rows: List[Dict[str, object]] = []
     processed_records = 0
     for idx, record in enumerate(records, start=1):
         if not record.path.exists():
@@ -1031,7 +1432,7 @@ def main() -> None:
         xnorm = float(torch.linalg.norm(X).clamp_min(1e-12).item())
         label = f"record={idx}/{len(records)} seed={record.seed} path={record.path.name}"
         print(f"[als] start {label}")
-        factors, weights, als_rel_error, als_time_s = run_overfactored_als(
+        factors, weights, als_rel_error, als_time_s, als_relerr_trace = run_overfactored_als(
             X=X,
             rank_over=args.R_over,
             sweeps=args.als_sweeps,
@@ -1041,6 +1442,20 @@ def main() -> None:
             verbose=args.verbose,
             run_label=label,
         )
+        for sweep_idx, relerr in enumerate(als_relerr_trace.tolist(), start=1):
+            als_trace_rows.append(
+                {
+                    "dataset_path": str(record.path),
+                    "data_seed": int(record.seed),
+                    "run_seed": int(record.seed),
+                    "sweep": int(sweep_idx),
+                    "rel_error": float(relerr),
+                    "rank_over": int(args.R_over),
+                    "als_sweeps_requested": int(args.als_sweeps),
+                    "als_time_s": float(als_time_s),
+                }
+            )
+        als_plot_traces.append(np.asarray(als_relerr_trace, dtype=np.float64))
         factors_w = _absorb_weights_into_factors(factors, weights)
         weighted_components, Q_base, q_base = build_qubo_from_factors(X, factors_w)
         print(
@@ -1050,12 +1465,51 @@ def main() -> None:
         processed_records += 1
 
         for mu_idx, mu in enumerate(mu_values):
-            q_raw = q_base + float(mu) * np.ones_like(q_base)
+            mu_effective = _scale_mu(mu, args.mu_effect, xnorm=xnorm, rank_ref=args.R_over)
+            q_raw = q_base + float(mu_effective) * np.ones_like(q_base)
             Q, q = _prepare_qubo_inputs(Q_base, q_raw)
             base_seed = int(record.seed) + 100_003 * int(mu_idx + 1)
+            shared_solver_seed = int(base_seed % 65536)
 
-            es_mask, es_energy = exhaustive_search_qubo(Q, q)
-            es_energy = qubo_energy(es_mask, Q, q)
+            if args.debug_verify_qubo_inputs:
+                Q_es = np.array(Q, dtype=np.float64, copy=True, order="C")
+                q_es = np.array(q, dtype=np.float64, copy=True, order="C")
+                Q_bf = np.array(Q, dtype=np.float64, copy=True, order="C")
+                q_bf = np.array(q, dtype=np.float64, copy=True, order="C")
+                Q_qaoa = np.array(Q, dtype=np.float64, copy=True, order="C")
+                q_qaoa = np.array(q, dtype=np.float64, copy=True, order="C")
+                _debug_verify_qubo_inputs(
+                    Q_es=Q_es,
+                    q_es=q_es,
+                    Q_bf=Q_bf,
+                    q_bf=q_bf,
+                    Q_qaoa=Q_qaoa,
+                    q_qaoa=q_qaoa,
+                    seed=int(record.seed),
+                    mu=float(mu),
+                )
+            else:
+                Q_es, q_es = Q, q
+                Q_bf, q_bf = Q, q
+                Q_qaoa, q_qaoa = Q, q
+
+            qaoa_verify_inputs = (
+                {
+                    "ES": (Q_es, q_es),
+                    "BF": (Q_bf, q_bf),
+                    "QAOA": (Q_qaoa, q_qaoa),
+                }
+                if args.debug_verify_qubo_inputs
+                else None
+            )
+            qaoa_verify_context = (
+                f"seed={int(record.seed)} mu={_format_mu(float(mu))}"
+                if args.debug_verify_qubo_inputs
+                else ""
+            )
+
+            es_mask, es_energy = exhaustive_search_qubo(Q_es, q_es)
+            es_energy = qubo_energy(es_mask, Q_es, q_es)
             es_metrics = evaluate_mask_metrics(
                 X=X,
                 X_norm=xnorm,
@@ -1068,13 +1522,13 @@ def main() -> None:
                 metrics_by_mu[mu]["ES"][key].append(val)
 
             bf_mask, bf_energy, _bf_best_trace, bf_loss_trace = bitflip_search_qubo(
-                Q=Q,
-                q=q,
+                Q=Q_bf,
+                q=q_bf,
                 max_evals=args.bf_max_evals,
                 restarts=args.bf_restarts,
-                seed=base_seed,
+                seed=shared_solver_seed,
             )
-            bf_energy_eval = qubo_energy(bf_mask, Q, q)
+            bf_energy_eval = qubo_energy(bf_mask, Q_bf, q_bf)
             if abs(float(bf_energy) - float(bf_energy_eval)) > 1e-9:
                 print(
                     f"[warn] BF energy mismatch detected; using canonical value "
@@ -1092,16 +1546,18 @@ def main() -> None:
             for key, val in bf_metrics.items():
                 metrics_by_mu[mu]["BF"][key].append(val)
 
-            qaoa_mask, qaoa_energy, qaoa_trace, qaoa_loss_trace = qaoa_search_qubo(
-                Q=Q,
-                q=q,
+            qaoa_mask, qaoa_energy, qaoa_trace, qaoa_loss_trace, qaoa_iter_trace = qaoa_search_qubo(
+                Q=Q_qaoa,
+                q=q_qaoa,
                 qaoa_p=args.qaoa_p,
                 shots=args.shots,
                 maxiter=args.qaoa_maxiter,
-                seed=base_seed + 17,
+                seed=shared_solver_seed,
                 optimizer=args.qaoa_optimizer,
+                verify_inputs_for_cost_op=qaoa_verify_inputs,
+                verify_context=qaoa_verify_context,
             )
-            qaoa_energy_eval = qubo_energy(qaoa_mask, Q, q)
+            qaoa_energy_eval = qubo_energy(qaoa_mask, Q_qaoa, q_qaoa)
             if abs(float(qaoa_energy) - float(qaoa_energy_eval)) > 1e-9:
                 print(
                     f"[warn] QAOA energy mismatch detected; using canonical value "
@@ -1121,18 +1577,21 @@ def main() -> None:
 
             print(
                 f"[seed] seed={record.seed} mu={mu} method=ES "
+                f"mu_eff={mu_effective:.6e} "
                 f"R_hat={es_metrics['Rhat']:.0f} rel_err={es_metrics['relerr']:.6e} "
-                f"shift_ES={es_metrics['gap']:.6e}"
+                f"delta_bar={es_metrics['delta']:.6e}"
             )
             print(
                 f"[seed] seed={record.seed} mu={mu} method=BF "
+                f"mu_eff={mu_effective:.6e} "
                 f"R_hat={bf_metrics['Rhat']:.0f} rel_err={bf_metrics['relerr']:.6e} "
-                f"shift_ES={bf_metrics['gap']:.6e}"
+                f"delta_bar={bf_metrics['delta']:.6e}"
             )
             print(
                 f"[seed] seed={record.seed} mu={mu} method=QAOA "
+                f"mu_eff={mu_effective:.6e} "
                 f"R_hat={qaoa_metrics['Rhat']:.0f} rel_err={qaoa_metrics['relerr']:.6e} "
-                f"shift_ES={qaoa_metrics['gap']:.6e}"
+                f"delta_bar={qaoa_metrics['delta']:.6e}"
             )
 
             if _is_close(mu, plot_mu):
@@ -1143,12 +1602,25 @@ def main() -> None:
                     np.asarray(qaoa_loss_trace, dtype=np.float64),
                     int(args.qaoa_maxiter),
                 )
+                qaoa_iter_y = _pad_trace(
+                    np.asarray(qaoa_iter_trace, dtype=np.float64),
+                    int(args.qaoa_maxiter),
+                )
                 bf_plot_traces.append(bf_y)
                 qaoa_plot_traces.append(qaoa_y)
                 qaoa_loss_plot_traces.append(qaoa_loss_y)
+                qaoa_iter_plot_traces.append(qaoa_iter_y)
 
     if processed_records == 0:
         raise SystemExit("No valid dataset payloads were loaded.")
+
+    als_trace_path = out_dir / "synth_als_relerr_history.csv"
+    pd.DataFrame(als_trace_rows).to_csv(als_trace_path, index=False)
+    print(f"[info] wrote ALS relative-error history to {als_trace_path}")
+    if als_plot_traces:
+        als_mat = np.vstack(als_plot_traces)
+        als_png, als_pdf = plot_als_relerr_history(als_mat, als_figure_path)
+        print(f"[info] wrote ALS convergence figures to {als_png} and {als_pdf}")
 
     for mu in mu_values:
         rows = [
@@ -1156,7 +1628,7 @@ def main() -> None:
             _metric_row("BF", metrics_by_mu[mu]["BF"]),
             _metric_row("QAOA", metrics_by_mu[mu]["QAOA"]),
         ]
-        metrics_path = out_dir / f"metrics_mu={_format_mu(mu)}.csv"
+        metrics_path = out_dir / f"synth_metrics_mu={_format_mu(mu)}.csv"
         pd.DataFrame(rows).to_csv(metrics_path, index=False)
         print(f"[info] wrote metrics to {metrics_path}")
         if _is_close(mu, plot_mu):
@@ -1167,7 +1639,7 @@ def main() -> None:
                 f"[summary] mu={mu} method={row['solver']} "
                 f"R_hat={row['mean_Rhat']:.4f}±{row['std_Rhat']:.4f} "
                 f"rel_err={row['mean_relerr']:.6e}±{row['std_relerr']:.6e} "
-                f"shift_ES={row['mean_gap']:.6e}±{row['std_gap']:.6e}"
+                f"delta_bar={row['mean_delta']:.6e}±{row['std_delta']:.6e}"
             )
 
     if bf_plot_traces and qaoa_plot_traces:
@@ -1191,13 +1663,22 @@ def main() -> None:
         qaoa_loss_mat = np.zeros((0, int(args.qaoa_maxiter)), dtype=np.float64)
         qaoa_loss_mean = np.zeros((int(args.qaoa_maxiter),), dtype=np.float64)
         qaoa_loss_std = np.zeros((int(args.qaoa_maxiter),), dtype=np.float64)
+
+    if qaoa_iter_plot_traces:
+        qaoa_iter_mat = np.vstack(qaoa_iter_plot_traces)
+        qaoa_iter_mean = np.nanmean(qaoa_iter_mat, axis=0)
+        qaoa_iter_std = np.nanstd(qaoa_iter_mat, axis=0)
+    else:
+        qaoa_iter_mat = np.zeros((0, int(args.qaoa_maxiter)), dtype=np.float64)
+        qaoa_iter_mean = np.zeros((int(args.qaoa_maxiter),), dtype=np.float64)
+        qaoa_iter_std = np.zeros((int(args.qaoa_maxiter),), dtype=np.float64)
     es_min_value_plot = (
         float(np.nanmean(np.asarray(es_plot_values, dtype=np.float64)))
         if len(es_plot_values) > 0
         else None
     )
 
-    convergence_path = out_dir / f"convergence_mu={_format_mu(plot_mu)}.npz"
+    convergence_path = out_dir / f"synth_convergence_mu={_format_mu(plot_mu)}.npz"
     np.savez(
         convergence_path,
         mu=float(plot_mu),
@@ -1211,6 +1692,9 @@ def main() -> None:
         qaoa_loss_x=np.arange(1, len(qaoa_loss_mean) + 1, dtype=np.int64),
         qaoa_loss_mean=qaoa_loss_mean,
         qaoa_loss_std=qaoa_loss_std,
+        qaoa_iter_x=np.arange(1, len(qaoa_iter_mean) + 1, dtype=np.int64),
+        qaoa_iter_mean=qaoa_iter_mean,
+        qaoa_iter_std=qaoa_iter_std,
         es_min_value=np.array(
             [es_min_value_plot if es_min_value_plot is not None else np.nan],
             dtype=np.float64,

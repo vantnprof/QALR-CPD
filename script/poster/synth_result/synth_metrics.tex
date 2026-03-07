@@ -1,0 +1,18 @@
+\begin{table}[t]
+\caption{Synthetic dataset: placeholder results for ES, BF, simulator-QAOA, and hardware-QAOA on the induced rank-selection QUBO.}
+\label{tab:synth_metrics}
+\centering
+\scriptsize
+\setlength{\tabcolsep}{5pt}
+\renewcommand{\arraystretch}{1.05}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Method & \(\hat{R}\) & Rel.\ error \(\downarrow\) & \(\bar{\delta}\) \(\downarrow\) \\
+\midrule
+ES                               & 6.20 $\pm$ 0.40 & 8.243e-01 $\pm$ 2.921e-03 & 0 \\
+BF                               & 6.20 $\pm$ 0.40 & 8.243e-01 $\pm$ 2.921e-03 & 0.000e+00 $\pm$ 0.000e+00 \\
+QAOA (simulator)                 & 6.60 $\pm$ 0.80 & 8.236e-01 $\pm$ 3.346e-03 & 3.113e-03 $\pm$ 5.607e-03 \\
+QAOA (real device)               & \textit{--} & \textit{--} & \textit{--} \\
+\bottomrule
+\end{tabular}
+\end{table}
