@@ -3,7 +3,7 @@
 Run lightweight amino poster experiments:
 1) fit overfactored CP-ALS once per seed,
 2) freeze factors and build a soft-rank QUBO,
-3) solve with ES / BF / QAOA,
+3) solve with ES / BF / QAOA (sim) / QAOA (IBM, one run),
 4) aggregate metrics and convergence traces.
 """
 
@@ -67,7 +67,11 @@ def _fmt_latex_pm(mean: float, std: float, sci: bool = False) -> str:
     return f"{mean:.2f} $\\pm$ {std:.2f}"
 
 
-def write_latex_table(rows: Sequence[Dict[str, float]], output_path: Path) -> None:
+def write_latex_table(
+    rows: Sequence[Dict[str, float]],
+    output_path: Path,
+    qaoa_ibm_solver_key: str = "QAOA (ibm_fez)",
+) -> None:
     by_method = {str(r["solver"]): r for r in rows}
 
     def _row_values(solver_key: str, is_es: bool = False) -> Tuple[str, str, str]:
@@ -89,10 +93,18 @@ def write_latex_table(rows: Sequence[Dict[str, float]], output_path: Path) -> No
     es_rhat, es_rel, es_delta = _row_values("ES", is_es=True)
     bf_rhat, bf_rel, bf_delta = _row_values("BF", is_es=False)
     sim_rhat, sim_rel, sim_delta = _row_values("QAOA", is_es=False)
+    ibm_rhat, ibm_rel, ibm_delta = _row_values(qaoa_ibm_solver_key, is_es=False)
+    sim_label_tex = r"QAOA (\textit{sim})"
+    qaoa_ibm_label_tex = qaoa_ibm_solver_key.replace("_", r"\_")
+    if qaoa_ibm_solver_key.startswith("QAOA (") and qaoa_ibm_solver_key.endswith(")"):
+        ibm_inner = qaoa_ibm_solver_key[len("QAOA (") : -1].strip()
+        if ibm_inner:
+            ibm_inner_tex = ibm_inner.replace("_", r"\_")
+            qaoa_ibm_label_tex = rf"QAOA (\textit{{{ibm_inner_tex}}})"
 
     lines = [
         r"\begin{table}[t]",
-        r"\caption{Amino Acids dataset: placeholder results for ES, BF, simulator-QAOA, and hardware-QAOA on the induced rank-selection QUBO.}",
+        r"\caption{Amino Acids dataset: results for ES, BF, simulator-QAOA, and IBM hardware-QAOA on the induced rank-selection QUBO.}",
         r"\label{tab:amino_metrics}",
         r"\centering",
         r"\scriptsize",
@@ -104,8 +116,8 @@ def write_latex_table(rows: Sequence[Dict[str, float]], output_path: Path) -> No
         r"\midrule",
         f"ES                               & {es_rhat} & {es_rel} & {es_delta} \\\\",
         f"BF                               & {bf_rhat} & {bf_rel} & {bf_delta} \\\\",
-        f"QAOA (simulator)                 & {sim_rhat} & {sim_rel} & {sim_delta} \\\\",
-        r"QAOA (real device)               & \textit{--} & \textit{--} & \textit{--} \\",
+        f"{sim_label_tex}                       & {sim_rhat} & {sim_rel} & {sim_delta} \\\\",
+        f"{qaoa_ibm_label_tex}                 & {ibm_rhat} & {ibm_rel} & {ibm_delta} \\\\",
         r"\bottomrule",
         r"\end{tabular}",
         r"\end{table}",
@@ -163,10 +175,48 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--shots", type=int, default=4096)
     parser.add_argument("--qaoa-maxiter", type=int, default=40)
     parser.add_argument(
+        "--qaoa-ibm-maxiter",
+        type=int,
+        default=None,
+        help=(
+            "Max iterations for the single IBM hardware QAOA run. "
+            "Defaults to --qaoa-maxiter when omitted."
+        ),
+    )
+    parser.add_argument(
         "--qaoa-optimizer",
         type=str,
         default="COBYLA",
         help="Optimizer method passed to scipy.optimize.minimize.",
+    )
+    parser.add_argument(
+        "--disable-qaoa-ibm",
+        action="store_true",
+        help="Skip the single IBM hardware QAOA run.",
+    )
+    parser.add_argument(
+        "--ibm-config",
+        type=str,
+        default="script/poster/ibm_runtime_config2.json",
+        help="Path to IBM Runtime config JSON (API_KEY, CRN, backend_name, channel).",
+    )
+    parser.add_argument(
+        "--ibm-backend",
+        type=str,
+        default="ibm_fez",
+        help="IBM backend name used for the hardware QAOA run.",
+    )
+    parser.add_argument(
+        "--ibm-channel",
+        type=str,
+        default=None,
+        help="Optional IBM Runtime channel override.",
+    )
+    parser.add_argument(
+        "--ibm-instance",
+        type=str,
+        default=None,
+        help="Optional IBM Runtime instance/CRN override.",
     )
     parser.add_argument("--bf-max-evals", type=int, default=40)
     parser.add_argument("--bf-restarts", type=int, default=1)
@@ -217,6 +267,31 @@ def main() -> None:
     if len(run_seeds) == 0:
         raise SystemExit("No run seeds selected.")
 
+    qaoa_ibm_maxiter = (
+        int(args.qaoa_ibm_maxiter)
+        if args.qaoa_ibm_maxiter is not None
+        else int(args.qaoa_maxiter)
+    )
+    qaoa_ibm_maxiter = max(1, qaoa_ibm_maxiter)
+
+    run_qaoa_ibm = not bool(args.disable_qaoa_ibm)
+    qaoa_ibm_backend = None
+    qaoa_ibm_backend_name = str(args.ibm_backend)
+    qaoa_ibm_solver_key = f"QAOA ({qaoa_ibm_backend_name})"
+    if run_qaoa_ibm:
+        try:
+            qaoa_ibm_backend, qaoa_ibm_backend_name = synth._resolve_ibm_backend(
+                config_path=args.ibm_config,
+                backend_override=args.ibm_backend,
+                channel_override=args.ibm_channel,
+                instance_override=args.ibm_instance,
+            )
+            qaoa_ibm_solver_key = f"QAOA ({qaoa_ibm_backend_name})"
+            print(f"[info] IBM backend={qaoa_ibm_backend_name}")
+        except Exception as exc:
+            run_qaoa_ibm = False
+            print(f"[warn] failed to initialize IBM backend; hardware QAOA disabled: {exc}")
+
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     figure_path = Path(args.figure_path)
@@ -238,6 +313,10 @@ def main() -> None:
             "run_seeds": [int(s) for s in run_seeds],
             "mu_values": [float(mu) for mu in mu_values],
             "plot_mu": float(plot_mu),
+            "qaoa_ibm_enabled": bool(run_qaoa_ibm),
+            "qaoa_ibm_backend": str(qaoa_ibm_backend_name),
+            "qaoa_ibm_solver_key": str(qaoa_ibm_solver_key),
+            "qaoa_ibm_maxiter": int(qaoa_ibm_maxiter),
         },
     }
     run_config_path = out_dir / "amino_run_config.json"
@@ -248,7 +327,8 @@ def main() -> None:
     print(
         f"[info] config R_over={args.R_over} als_sweeps={args.als_sweeps} "
         f"bf_max_evals={args.bf_max_evals} qaoa_maxiter={args.qaoa_maxiter} "
-        f"num_run_seeds={len(run_seeds)} mu_effect={args.mu_effect}"
+        f"qaoa_ibm_maxiter={qaoa_ibm_maxiter} num_run_seeds={len(run_seeds)} "
+        f"mu_effect={args.mu_effect} qaoa_ibm_enabled={run_qaoa_ibm}"
     )
 
     if int(args.R_over) > 20:
@@ -257,7 +337,7 @@ def main() -> None:
             "please set --R-over <= 20."
         )
 
-    solvers = ("ES", "BF", "QAOA")
+    solvers = ("ES", "BF", "QAOA", qaoa_ibm_solver_key)
     metrics_by_mu: Dict[float, Dict[str, Dict[str, List[float]]]] = {}
     for mu in mu_values:
         metrics_by_mu[mu] = {
@@ -267,12 +347,14 @@ def main() -> None:
 
     bf_plot_traces: List[np.ndarray] = []
     qaoa_plot_traces: List[np.ndarray] = []
+    qaoa_ibm_plot_traces: List[np.ndarray] = []
     qaoa_loss_plot_traces: List[np.ndarray] = []
     qaoa_iter_plot_traces: List[np.ndarray] = []
     es_plot_values: List[float] = []
     als_plot_traces: List[np.ndarray] = []
     als_trace_rows: List[Dict[str, object]] = []
     processed_runs = 0
+    qaoa_ibm_attempted = False
 
     for data_idx, data_path in enumerate(data_paths, start=1):
         if not data_path.exists():
@@ -414,6 +496,50 @@ def main() -> None:
                 for key, val in qaoa_metrics.items():
                     metrics_by_mu[mu]["QAOA"][key].append(val)
 
+                qaoa_ibm_metrics: Optional[Dict[str, float]] = None
+                if run_qaoa_ibm and (not qaoa_ibm_attempted) and synth._is_close(mu, plot_mu):
+                    qaoa_ibm_attempted = True
+                    try:
+                        (
+                            qaoa_ibm_mask,
+                            qaoa_ibm_energy,
+                            qaoa_ibm_trace,
+                            _qaoa_ibm_loss_trace,
+                            _qaoa_ibm_iter_trace,
+                        ) = synth.qaoa_search_qubo(
+                            Q=Q,
+                            q=q,
+                            qaoa_p=args.qaoa_p,
+                            shots=args.shots,
+                            maxiter=qaoa_ibm_maxiter,
+                            seed=shared_solver_seed,
+                            optimizer=args.qaoa_optimizer,
+                            backend=qaoa_ibm_backend,
+                        )
+                        qaoa_ibm_energy_eval = synth.qubo_energy(qaoa_ibm_mask, Q, q)
+                        if abs(float(qaoa_ibm_energy) - float(qaoa_ibm_energy_eval)) > 1e-9:
+                            print(
+                                f"[warn] {qaoa_ibm_solver_key} energy mismatch detected; "
+                                f"using canonical value {qaoa_ibm_energy_eval:.6e} "
+                                f"(solver reported {qaoa_ibm_energy:.6e})."
+                            )
+                        qaoa_ibm_energy = qaoa_ibm_energy_eval
+                        qaoa_ibm_metrics = synth.evaluate_mask_metrics(
+                            X=X,
+                            X_norm=xnorm,
+                            weighted_components=weighted_components,
+                            mask=qaoa_ibm_mask,
+                            energy=qaoa_ibm_energy,
+                            es_energy=es_energy,
+                        )
+                        for key, val in qaoa_ibm_metrics.items():
+                            metrics_by_mu[mu][qaoa_ibm_solver_key][key].append(val)
+                        qaoa_ibm_plot_traces.append(
+                            synth._pad_trace(np.asarray(qaoa_ibm_trace, dtype=np.float64), int(qaoa_ibm_maxiter))
+                        )
+                    except Exception as exc:
+                        print(f"[warn] {qaoa_ibm_solver_key} run failed: {exc}")
+
                 print(
                     f"[seed] data={data_path.name} run_seed={run_seed} mu={mu} method=ES "
                     f"mu_eff={mu_effective:.6e} "
@@ -432,6 +558,14 @@ def main() -> None:
                     f"R_hat={qaoa_metrics['Rhat']:.0f} rel_err={qaoa_metrics['relerr']:.6e} "
                     f"delta_bar={qaoa_metrics['delta']:.6e}"
                 )
+                if qaoa_ibm_metrics is not None:
+                    print(
+                        f"[seed] data={data_path.name} run_seed={run_seed} mu={mu} method={qaoa_ibm_solver_key} "
+                        f"mu_eff={mu_effective:.6e} "
+                        f"R_hat={qaoa_ibm_metrics['Rhat']:.0f} "
+                        f"rel_err={qaoa_ibm_metrics['relerr']:.6e} "
+                        f"delta_bar={qaoa_ibm_metrics['delta']:.6e}"
+                    )
 
                 if synth._is_close(mu, plot_mu):
                     es_plot_values.append(float(es_energy))
@@ -472,13 +606,18 @@ def main() -> None:
             synth._metric_row("ES", metrics_by_mu[mu]["ES"]),
             synth._metric_row("BF", metrics_by_mu[mu]["BF"]),
             synth._metric_row("QAOA", metrics_by_mu[mu]["QAOA"]),
+            synth._metric_row(qaoa_ibm_solver_key, metrics_by_mu[mu][qaoa_ibm_solver_key]),
         ]
         metrics_path = out_dir / f"amino_metrics_mu={synth._format_mu(mu)}.csv"
         pd.DataFrame(rows).to_csv(metrics_path, index=False)
         print(f"[info] wrote metrics to {metrics_path}")
 
         if synth._is_close(mu, plot_mu):
-            write_latex_table(rows, tex_table_path)
+            write_latex_table(
+                rows,
+                tex_table_path,
+                qaoa_ibm_solver_key=qaoa_ibm_solver_key,
+            )
             print(f"[info] wrote latex table to {tex_table_path}")
 
         for row in rows:
@@ -501,6 +640,15 @@ def main() -> None:
         bf_std = np.zeros((int(args.bf_max_evals),), dtype=np.float64)
         qaoa_mean = np.zeros((int(args.qaoa_maxiter),), dtype=np.float64)
         qaoa_std = np.zeros((int(args.qaoa_maxiter),), dtype=np.float64)
+
+    if qaoa_ibm_plot_traces:
+        qaoa_ibm_mat = np.vstack(qaoa_ibm_plot_traces)
+        qaoa_ibm_mean = np.nanmean(qaoa_ibm_mat, axis=0)
+        qaoa_ibm_std = np.nanstd(qaoa_ibm_mat, axis=0)
+    else:
+        qaoa_ibm_mat = np.zeros((0, qaoa_ibm_maxiter), dtype=np.float64)
+        qaoa_ibm_mean = np.zeros((0,), dtype=np.float64)
+        qaoa_ibm_std = np.zeros((0,), dtype=np.float64)
 
     if qaoa_loss_plot_traces:
         qaoa_loss_mat = np.vstack(qaoa_loss_plot_traces)
@@ -537,6 +685,10 @@ def main() -> None:
         qaoa_x=np.arange(1, len(qaoa_mean) + 1, dtype=np.int64),
         qaoa_mean=qaoa_mean,
         qaoa_std=qaoa_std,
+        qaoa_ibm_x=np.arange(1, len(qaoa_ibm_mean) + 1, dtype=np.int64),
+        qaoa_ibm_mean=qaoa_ibm_mean,
+        qaoa_ibm_std=qaoa_ibm_std,
+        qaoa_ibm_solver=np.asarray([qaoa_ibm_solver_key]),
         qaoa_loss_x=np.arange(1, len(qaoa_loss_mean) + 1, dtype=np.int64),
         qaoa_loss_mean=qaoa_loss_mean,
         qaoa_loss_std=qaoa_loss_std,
@@ -555,6 +707,9 @@ def main() -> None:
         bf_std=bf_std,
         qaoa_mean=qaoa_mean,
         qaoa_std=qaoa_std,
+        qaoa_ibm_mean=qaoa_ibm_mean,
+        qaoa_ibm_std=qaoa_ibm_std,
+        qaoa_ibm_label=qaoa_ibm_solver_key,
         use_gap=True,
         es_min_value=es_min_value_plot,
         output_path=figure_path,

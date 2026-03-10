@@ -1,6 +1,6 @@
 {
   "script": "/work/vantn/QRank-PARAFAC/script/poster/amino_poster_experiment.py",
-  "timestamp_utc": "2026-03-07T23:12:00Z",
+  "timestamp_utc": "2026-03-08T01:48:03Z",
   "argv": [
     "script/poster/amino_poster_experiment.py",
     "--num-seeds",
@@ -22,7 +22,13 @@
     "qaoa_p": 2,
     "shots": 4096,
     "qaoa_maxiter": 40,
+    "qaoa_ibm_maxiter": null,
     "qaoa_optimizer": "COBYLA",
+    "disable_qaoa_ibm": false,
+    "ibm_config": "script/poster/ibm_runtime_config2.json",
+    "ibm_backend": "ibm_fez",
+    "ibm_channel": null,
+    "ibm_instance": null,
     "bf_max_evals": 40,
     "bf_restarts": 1,
     "out_dir": "script/poster/amino_result",
@@ -49,6 +55,10 @@
     "mu_values": [
       0.75
     ],
-    "plot_mu": 0.75
+    "plot_mu": 0.75,
+    "qaoa_ibm_enabled": true,
+    "qaoa_ibm_backend": "ibm_fez",
+    "qaoa_ibm_solver_key": "QAOA (ibm_fez)",
+    "qaoa_ibm_maxiter": 40
   }
 }

@@ -12,6 +12,11 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import numpy as np
 import pandas as pd
 
+AXIS_LABEL_FONTSIZE = 11
+LEGEND_FONTSIZE = 10
+TIGHT_LAYOUT_PAD = 0.2
+BBOX_PAD_INCHES = 0.02
+
 
 def _format_mu(mu: float) -> str:
     return f"{float(mu):.6g}"
@@ -84,6 +89,17 @@ def _fmt_latex_pm(mean: float, std: float, sci: bool = False) -> str:
     return f"{mean:.2f} $\\pm$ {std:.2f}"
 
 
+def _format_qaoa_legend_label(raw_label: str) -> str:
+    label = str(raw_label).strip()
+    prefix = "QAOA ("
+    if label.startswith(prefix) and label.endswith(")"):
+        inner = label[len(prefix) : -1].strip()
+        if inner:
+            inner_math = inner.replace("_", r"\_")
+            return rf"QAOA ($\mathit{{{inner_math}}}$)"
+    return label
+
+
 def _paired_figure_paths(output_path: Path) -> Tuple[Path, Path]:
     base = output_path.with_suffix("") if output_path.suffix else output_path
     return base.with_suffix(".png"), base.with_suffix(".pdf")
@@ -101,7 +117,11 @@ def _pad_trace(trace: np.ndarray, target_len: int) -> np.ndarray:
     return np.pad(arr, (0, target_len - arr.size), mode="edge")
 
 
-def write_latex_table(rows: Sequence[Dict[str, float]], output_path: Path) -> None:
+def write_latex_table(
+    rows: Sequence[Dict[str, float]],
+    output_path: Path,
+    qaoa_ibm_solver_key: str = "QAOA (ibm_fez)",
+) -> None:
     by_method = {str(r["solver"]): r for r in rows}
 
     es_row = by_method.get("ES")
@@ -131,10 +151,18 @@ def write_latex_table(rows: Sequence[Dict[str, float]], output_path: Path) -> No
     es_rhat, es_rel, es_delta = _row_values("ES", is_es=True)
     bf_rhat, bf_rel, bf_delta = _row_values("BF", is_es=False)
     sim_rhat, sim_rel, sim_delta = _row_values("QAOA", is_es=False)
+    ibm_rhat, ibm_rel, ibm_delta = _row_values(qaoa_ibm_solver_key, is_es=False)
+    sim_label_tex = r"QAOA (\textit{sim})"
+    qaoa_ibm_label_tex = qaoa_ibm_solver_key.replace("_", r"\_")
+    if qaoa_ibm_solver_key.startswith("QAOA (") and qaoa_ibm_solver_key.endswith(")"):
+        ibm_inner = qaoa_ibm_solver_key[len("QAOA (") : -1].strip()
+        if ibm_inner:
+            ibm_inner_tex = ibm_inner.replace("_", r"\_")
+            qaoa_ibm_label_tex = rf"QAOA (\textit{{{ibm_inner_tex}}})"
 
     lines = [
         r"\begin{table}[t]",
-        r"\caption{Amino Acids dataset: placeholder results for ES, BF, simulator-QAOA, and hardware-QAOA on the induced rank-selection QUBO.}",
+        r"\caption{Amino Acids dataset: results for ES, BF, simulator-QAOA, and IBM hardware-QAOA on the induced rank-selection QUBO.}",
         r"\label{tab:amino_metrics}",
         r"\centering",
         r"\scriptsize",
@@ -146,8 +174,8 @@ def write_latex_table(rows: Sequence[Dict[str, float]], output_path: Path) -> No
         r"\midrule",
         f"ES                               & {es_rhat} & {es_rel} & {es_delta} \\\\",
         f"BF                               & {bf_rhat} & {bf_rel} & {bf_delta} \\\\",
-        f"QAOA (simulator)                 & {sim_rhat} & {sim_rel} & {sim_delta} \\\\",
-        r"QAOA (real device)               & \textit{--} & \textit{--} & \textit{--} \\",
+        f"{sim_label_tex}                       & {sim_rhat} & {sim_rel} & {sim_delta} \\\\",
+        f"{qaoa_ibm_label_tex}                 & {ibm_rhat} & {ibm_rel} & {ibm_delta} \\\\",
         r"\bottomrule",
         r"\end{tabular}",
         r"\end{table}",
@@ -224,6 +252,10 @@ def plot_convergence(
     qaoa_x: np.ndarray,
     qaoa_mean: np.ndarray,
     qaoa_std: np.ndarray,
+    qaoa_ibm_x: np.ndarray,
+    qaoa_ibm_mean: np.ndarray,
+    qaoa_ibm_std: np.ndarray,
+    qaoa_ibm_label: str,
     es_min_value: Optional[float],
     output_path: Path,
     figsize: Tuple[float, float],
@@ -238,20 +270,26 @@ def plot_convergence(
     qaoa_x = np.asarray(qaoa_x, dtype=np.int64).reshape(-1)
     qaoa_mean = np.asarray(qaoa_mean, dtype=np.float64).reshape(-1)
     qaoa_std = np.asarray(qaoa_std, dtype=np.float64).reshape(-1)
+    qaoa_ibm_x = np.asarray(qaoa_ibm_x, dtype=np.int64).reshape(-1)
+    qaoa_ibm_mean = np.asarray(qaoa_ibm_mean, dtype=np.float64).reshape(-1)
+    qaoa_ibm_std = np.asarray(qaoa_ibm_std, dtype=np.float64).reshape(-1)
     x_max = int(
         max(
             int(np.max(bf_x)) if bf_x.size else 1,
             int(np.max(qaoa_x)) if qaoa_x.size else 1,
+            int(np.max(qaoa_ibm_x)) if qaoa_ibm_x.size else 1,
             1,
         )
     )
     x_ticks = _compute_xticks(x_max)
     bf_x_plot = _nudge_endpoint_positions(bf_x, x_max)
     qaoa_x_plot = _nudge_endpoint_positions(qaoa_x, x_max)
+    qaoa_ibm_x_plot = _nudge_endpoint_positions(qaoa_ibm_x, x_max)
 
     fig, ax = plt.subplots(figsize=figsize)
     bf_markevery = _marker_indices_for_ticks(bf_x, x_ticks)
     qaoa_markevery = _marker_indices_for_ticks(qaoa_x, x_ticks)
+    qaoa_ibm_markevery = _marker_indices_for_ticks(qaoa_ibm_x, x_ticks)
     bf_line, = ax.plot(
         bf_x_plot,
         bf_mean,
@@ -271,8 +309,20 @@ def plot_convergence(
         marker="s",
         markersize=3.0,
         markevery=qaoa_markevery,
-        label="QAOA",
+        label=_format_qaoa_legend_label("QAOA (sim)"),
     )
+    qaoa_ibm_line = None
+    if qaoa_ibm_x.size > 0 and qaoa_ibm_mean.size > 0:
+        qaoa_ibm_line, = ax.plot(
+            qaoa_ibm_x_plot,
+            qaoa_ibm_mean,
+            color="#2ca02c",
+            linewidth=1.5,
+            marker="^",
+            markersize=3.0,
+            markevery=qaoa_ibm_markevery,
+            label=_format_qaoa_legend_label(qaoa_ibm_label),
+        )
 
     ax.set_xlim(1, x_max)
     _set_inset_endpoint_ticks(ax, x_max)
@@ -294,20 +344,31 @@ def plot_convergence(
             label="ES",
         )
 
-    ax.set_xlabel("Iteration", fontsize=9)
-    ax.set_ylabel("Objective", fontsize=9)
+    ax.set_xlabel("Iteration", fontsize=AXIS_LABEL_FONTSIZE)
+    ax.set_ylabel("Objective", fontsize=AXIS_LABEL_FONTSIZE)
     ax.tick_params(axis="both", labelsize=9)
     ax.grid(axis="x", alpha=0.3)
 
+    legend_handles = []
     if es_line is not None:
-        ax.legend(handles=[es_line, bf_line, qaoa_line], frameon=False, fontsize=9)
-    else:
-        ax.legend(handles=[bf_line, qaoa_line], frameon=False, fontsize=9)
+        legend_handles.append(es_line)
+    legend_handles.extend([bf_line, qaoa_line])
+    if qaoa_ibm_line is not None:
+        legend_handles.append(qaoa_ibm_line)
+    ax.legend(
+        handles=legend_handles,
+        frameon=False,
+        fontsize=LEGEND_FONTSIZE,
+        loc="upper right",
+        bbox_to_anchor=(1.0, 1.0),
+        borderaxespad=0.2,
+    )
 
-    fig.tight_layout()
+    fig.tight_layout(pad=TIGHT_LAYOUT_PAD)
     png_path, pdf_path = _paired_figure_paths(output_path)
-    fig.savefig(png_path, bbox_inches="tight", dpi=int(dpi))
-    fig.savefig(pdf_path, bbox_inches="tight")
+    # Keep convergence outputs at exact figsize x dpi (no tight bbox cropping).
+    fig.savefig(png_path, dpi=int(dpi))
+    fig.savefig(pdf_path)
     plt.close(fig)
 
 
@@ -353,16 +414,16 @@ def plot_qaoa_loss_history(
 
     ax.set_xlim(1, x_max)
     _set_inset_endpoint_ticks(ax, x_max)
-    ax.set_xlabel("Iteration", fontsize=9)
-    ax.set_ylabel("QAOA Loss", fontsize=9)
+    ax.set_xlabel("Iteration", fontsize=AXIS_LABEL_FONTSIZE)
+    ax.set_ylabel("QAOA Loss", fontsize=AXIS_LABEL_FONTSIZE)
     ax.tick_params(axis="both", labelsize=9)
     ax.grid(axis="x", alpha=0.3)
-    ax.legend(frameon=False, fontsize=9)
+    ax.legend(frameon=False, fontsize=LEGEND_FONTSIZE)
 
-    fig.tight_layout()
+    fig.tight_layout(pad=TIGHT_LAYOUT_PAD)
     png_path, pdf_path = _paired_figure_paths(output_path)
-    fig.savefig(png_path, bbox_inches="tight", dpi=int(dpi))
-    fig.savefig(pdf_path, bbox_inches="tight")
+    fig.savefig(png_path, bbox_inches="tight", pad_inches=BBOX_PAD_INCHES, dpi=int(dpi))
+    fig.savefig(pdf_path, bbox_inches="tight", pad_inches=BBOX_PAD_INCHES)
     plt.close(fig)
 
 
@@ -406,15 +467,15 @@ def plot_als_relerr_history(
 
     ax.set_xlim(1, x_max)
     _set_inset_endpoint_ticks(ax, x_max)
-    ax.set_xlabel("ALS Sweep", fontsize=9)
-    ax.set_ylabel("Relative Error", fontsize=9)
+    ax.set_xlabel("ALS Sweep", fontsize=AXIS_LABEL_FONTSIZE)
+    ax.set_ylabel("Relative Error", fontsize=AXIS_LABEL_FONTSIZE)
     ax.tick_params(axis="both", labelsize=9)
     ax.grid(axis="x", alpha=0.3)
-    ax.legend(frameon=False, fontsize=9)
-    fig.tight_layout()
+    ax.legend(frameon=False, fontsize=LEGEND_FONTSIZE)
+    fig.tight_layout(pad=TIGHT_LAYOUT_PAD)
     png_path, pdf_path = _paired_figure_paths(output_path)
-    fig.savefig(png_path, bbox_inches="tight", dpi=int(dpi))
-    fig.savefig(pdf_path, bbox_inches="tight")
+    fig.savefig(png_path, bbox_inches="tight", pad_inches=BBOX_PAD_INCHES, dpi=int(dpi))
+    fig.savefig(pdf_path, bbox_inches="tight", pad_inches=BBOX_PAD_INCHES)
     plt.close(fig)
 
 
@@ -460,6 +521,29 @@ def main() -> None:
     bf_std = conv["bf_std"] if "bf_std" in conv else np.zeros_like(conv["bf_mean"], dtype=np.float64)
     qaoa_x = conv["qaoa_x"] if "qaoa_x" in conv else np.arange(1, len(conv["qaoa_mean"]) + 1, dtype=np.int64)
     qaoa_std = conv["qaoa_std"] if "qaoa_std" in conv else np.zeros_like(conv["qaoa_mean"], dtype=np.float64)
+    if "qaoa_ibm_mean" in conv:
+        qaoa_ibm_mean = conv["qaoa_ibm_mean"]
+        qaoa_ibm_x = (
+            conv["qaoa_ibm_x"]
+            if "qaoa_ibm_x" in conv
+            else np.arange(1, len(qaoa_ibm_mean) + 1, dtype=np.int64)
+        )
+        qaoa_ibm_std = (
+            conv["qaoa_ibm_std"]
+            if "qaoa_ibm_std" in conv
+            else np.zeros_like(qaoa_ibm_mean, dtype=np.float64)
+        )
+    else:
+        qaoa_ibm_x = np.zeros((0,), dtype=np.int64)
+        qaoa_ibm_mean = np.zeros((0,), dtype=np.float64)
+        qaoa_ibm_std = np.zeros((0,), dtype=np.float64)
+    qaoa_ibm_label = "QAOA (ibm_fez)"
+    if "qaoa_ibm_solver" in conv:
+        qaoa_ibm_raw = np.asarray(conv["qaoa_ibm_solver"]).reshape(-1)
+        if qaoa_ibm_raw.size > 0:
+            label_text = str(qaoa_ibm_raw[0]).strip()
+            if label_text:
+                qaoa_ibm_label = label_text
     qaoa_loss_x = conv["qaoa_loss_x"] if "qaoa_loss_x" in conv else qaoa_x
 
     es_min_value = None
@@ -475,6 +559,10 @@ def main() -> None:
         qaoa_x=qaoa_x,
         qaoa_mean=conv["qaoa_mean"],
         qaoa_std=qaoa_std,
+        qaoa_ibm_x=qaoa_ibm_x,
+        qaoa_ibm_mean=qaoa_ibm_mean,
+        qaoa_ibm_std=qaoa_ibm_std,
+        qaoa_ibm_label=qaoa_ibm_label,
         es_min_value=es_min_value,
         output_path=Path(args.figure_path),
         figsize=figsize,
@@ -535,14 +623,19 @@ def main() -> None:
     if missing:
         raise ValueError(f"metrics CSV is missing columns: {missing}")
 
+    qaoa_ibm_solver_key = "QAOA (ibm_fez)"
     rows = []
-    for method in ("ES", "BF", "QAOA"):
+    for method in ("ES", "BF", "QAOA", qaoa_ibm_solver_key):
         sub = df[df["solver"].astype(str) == method]
         if sub.empty:
             rows.append({"solver": method})
         else:
             rows.append(sub.iloc[0].to_dict())
-    write_latex_table(rows, Path(args.tex_table_path))
+    write_latex_table(
+        rows,
+        Path(args.tex_table_path),
+        qaoa_ibm_solver_key=qaoa_ibm_solver_key,
+    )
     print(f"[info] wrote LaTeX table to {args.tex_table_path}")
 
 
