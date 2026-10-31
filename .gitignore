@@ -206,7 +206,21 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-# generated experiment outputs
-results/*_experiment.csv
-script/poster/ibm_runtime_config.json
-script/poster/ibm_runtime_config2.json
+# Raw per-sweep records of the first version are committed gzip-compressed (results/v1/*_experiment.csv.gz);
+# `gunzip -k results/v1/*_experiment.csv.gz` restores the files the legacy plotting scripts read.
+results/v1/*_experiment.csv
+
+# Smoke-test, check and export outputs
+results/quick/
+results/revision/reproduce/
+data/synthetic_revision/
+
+# IBM Quantum credentials: never commit
+*ibm*config*.json
+qiskit-ibm.json
+.env.*
+
+# LaTeX build files
+reports/online_resource_1/*.aux
+reports/online_resource_1/*.out
+reports/online_resource_1/*.toc

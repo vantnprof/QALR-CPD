@@ -14,7 +14,7 @@ from typing import List, Sequence, Tuple
 
 import torch
 
-from src.utils.tensor_operator_util import cp_reconstruct
+from src.utils.tensor import cp_reconstruct
 
 
 @dataclass

@@ -1,11 +1,14 @@
-# Use the environment of the submitted experiments and add dwave-samplers (SA, tabu).
-# Versions below are the ones this revision code was tested with; record yours with `pip freeze > freeze.txt`
-# (the run stages also write revision_out/environment.json for the parameter table, R5.4).
-torch>=2.1
-numpy
-scipy
-pandas
-dwave-samplers>=1.4          # SimulatedAnnealingSampler, TabuSampler  (tested: 1.8.0)
-qiskit>=1.3                  # tested: 2.6.1
-qiskit-aer>=0.15             # tested: 0.18.2
-qiskit-ibm-runtime>=0.30     # tested: 0.51.0
+# Exact versions used for the paper (Python 3.13, Linux x86_64; also in results/revision/environment.json).
+# Install with:  pip install -r requirements.txt && pip install -e .
+torch==2.15.0
+numpy==2.5.4
+scipy==1.18.1
+qiskit==2.6.0
+qiskit-aer==0.18.2
+qiskit-ibm-runtime==0.50.0     # IBM hardware runs and the FakeFez / FakeTorino noise models
+dwave-samplers==1.8.0          # simulated annealing and tabu search
+pandas==3.1.0
+matplotlib==3.11.2
+pytest==9.2.0                  # tests/
+
+# Optional: tensorly, only to rebuild data/covid19/covid19_serology.pt with data/covid19/convert_tensorly_to_pt.py.

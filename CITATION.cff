@@ -1,0 +1,33 @@
+cff-version: 1.2.0
+message: "If you use this code or these records, please cite the article below."
+title: "QALR-CPD: Quantum Optimization for Adaptive Low-Rank CP Decomposition (code and run records)"
+type: software
+license: MIT
+repository-code: "https://github.com/vantnprof/QALR-CPD"
+authors:
+  - family-names: Nguyen
+    given-names: Van Tien
+    affiliation: "Department of Electrical Engineering, The University of Texas at San Antonio"
+    orcid: "https://orcid.org/0009-0000-8834-9415"
+  - family-names: Markopoulos
+    given-names: Panagiotis
+    affiliation: "Departments of Computer Engineering and Computer Science, The University of Texas at San Antonio"
+    orcid: "https://orcid.org/0000-0001-9686-779X"
+keywords:
+  - CP decomposition
+  - tensor rank
+  - QUBO
+  - QAOA
+  - quantum optimization
+preferred-citation:
+  type: article
+  title: "Quantum Optimization for Adaptive Low-Rank CP Decomposition"
+  authors:
+    - family-names: Nguyen
+      given-names: Van Tien
+      orcid: "https://orcid.org/0009-0000-8834-9415"
+    - family-names: Markopoulos
+      given-names: Panagiotis
+      orcid: "https://orcid.org/0000-0001-9686-779X"
+  journal: "Quantum Machine Intelligence"
+  status: submitted

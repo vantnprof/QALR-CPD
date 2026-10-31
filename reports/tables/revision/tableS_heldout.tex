@@ -1,0 +1,102 @@
+% Split-half check of the penalty-selection protocol
+\begin{longtable}{@{}lllccc@{}}
+\toprule
+Rule & Design & Selected on & Selected \(\hat R\) & \(\mu\) & Exact on the other half \\
+\midrule
+\endhead
+ES & snr-3dB\_rho0.5 & seeds 0--9 & \(6\) & \(0.3\) & 100\% \\
+ES & snr-3dB\_rho0.5 & seeds 10--19 & \(6\) & \(0.4\) & 100\% \\
+ES & snr+0dB\_rho0.5 & seeds 0--9 & \(6\) & \(0.5\) & 100\% \\
+ES & snr+0dB\_rho0.5 & seeds 10--19 & \(6\) & \(0.5\) & 100\% \\
+ES & snr+5dB\_rho0.5 & seeds 0--9 & \(6\) & \(0.65\) & 100\% \\
+ES & snr+5dB\_rho0.5 & seeds 10--19 & \(6\) & \(0.8\) & 100\% \\
+ES & snr+10dB\_rho0.5 & seeds 0--9 & \(6\) & \(0.8\) & 100\% \\
+ES & snr+10dB\_rho0.5 & seeds 10--19 & \(6\) & \(1\) & 100\% \\
+ES & snr+15dB\_rho0.5 & seeds 0--9 & \(6\) & \(0.8\) & 100\% \\
+ES & snr+15dB\_rho0.5 & seeds 10--19 & \(6\) & \(1\) & 100\% \\
+ES & snr+20dB\_rho0.5 & seeds 0--9 & \(6\) & \(0.8\) & 100\% \\
+ES & snr+20dB\_rho0.5 & seeds 10--19 & \(6\) & \(0.8\) & 90\% \\
+ES & synth\_default & seeds 0--9 & \(6\) & \(0.3\) & 100\% \\
+ES & synth\_default & seeds 10--19 & \(6\) & \(0.4\) & 100\% \\
+ES & rho0.0\_snr+0dB & seeds 0--9 & \(6\) & \(0.65\) & 100\% \\
+ES & rho0.0\_snr+0dB & seeds 10--19 & \(6\) & \(0.65\) & 100\% \\
+ES & rho0.0\_snr+10dB & seeds 0--9 & \(6\) & \(1\) & 100\% \\
+ES & rho0.0\_snr+10dB & seeds 10--19 & \(6\) & \(1\) & 100\% \\
+ES & rho0.3\_snr+0dB & seeds 0--9 & \(6\) & \(0.65\) & 100\% \\
+ES & rho0.3\_snr+0dB & seeds 10--19 & \(6\) & \(0.5\) & 100\% \\
+ES & rho0.3\_snr+10dB & seeds 0--9 & \(6\) & \(1\) & 100\% \\
+ES & rho0.3\_snr+10dB & seeds 10--19 & \(6\) & \(1\) & 90\% \\
+ES & rho0.7\_snr+0dB & seeds 0--9 & \(6\) & \(0.3\) & 100\% \\
+ES & rho0.7\_snr+0dB & seeds 10--19 & \(6\) & \(0.3\) & 100\% \\
+ES & rho0.7\_snr+10dB & seeds 0--9 & \(6\) & \(0.65\) & 90\% \\
+ES & rho0.7\_snr+10dB & seeds 10--19 & \(6\) & \(0.65\) & 100\% \\
+ES & rho0.9\_snr+0dB & seeds 0--9 & abstain & -- & -- \\
+ES & rho0.9\_snr+0dB & seeds 10--19 & \(2\) & \(0.8\) & 0\% \\
+ES & rho0.9\_snr+10dB & seeds 0--9 & \(6\) & \(0.2\) & 80\% \\
+ES & rho0.9\_snr+10dB & seeds 10--19 & abstain & -- & -- \\
+Mag-IL & snr-3dB\_rho0.5 & seeds 0--9 & \(6\) & \(0.15\) & 70\% \\
+Mag-IL & snr-3dB\_rho0.5 & seeds 10--19 & \(6\) & \(0.3\) & 80\% \\
+Mag-IL & snr+0dB\_rho0.5 & seeds 0--9 & \(6\) & \(0.3\) & 90\% \\
+Mag-IL & snr+0dB\_rho0.5 & seeds 10--19 & \(6\) & \(0.3\) & 100\% \\
+Mag-IL & snr+5dB\_rho0.5 & seeds 0--9 & abstain & -- & -- \\
+Mag-IL & snr+5dB\_rho0.5 & seeds 10--19 & abstain & -- & -- \\
+Mag-IL & snr+10dB\_rho0.5 & seeds 0--9 & \(6\) & \(0.5\) & 60\% \\
+Mag-IL & snr+10dB\_rho0.5 & seeds 10--19 & abstain & -- & -- \\
+Mag-IL & snr+15dB\_rho0.5 & seeds 0--9 & abstain & -- & -- \\
+Mag-IL & snr+15dB\_rho0.5 & seeds 10--19 & \(6\) & \(0.5\) & 80\% \\
+Mag-IL & snr+20dB\_rho0.5 & seeds 0--9 & \(6\) & \(0.65\) & 70\% \\
+Mag-IL & snr+20dB\_rho0.5 & seeds 10--19 & abstain & -- & -- \\
+Mag-IL & synth\_default & seeds 0--9 & \(6\) & \(0.15\) & 70\% \\
+Mag-IL & synth\_default & seeds 10--19 & abstain & -- & -- \\
+Mag-IL & rho0.0\_snr+0dB & seeds 0--9 & abstain & -- & -- \\
+Mag-IL & rho0.0\_snr+0dB & seeds 10--19 & \(6\) & \(0.4\) & 100\% \\
+Mag-IL & rho0.0\_snr+10dB & seeds 0--9 & abstain & -- & -- \\
+Mag-IL & rho0.0\_snr+10dB & seeds 10--19 & \(6\) & \(0.8\) & 50\% \\
+Mag-IL & rho0.3\_snr+0dB & seeds 0--9 & \(6\) & \(0.4\) & 90\% \\
+Mag-IL & rho0.3\_snr+0dB & seeds 10--19 & \(6\) & \(0.4\) & 90\% \\
+Mag-IL & rho0.3\_snr+10dB & seeds 0--9 & abstain & -- & -- \\
+Mag-IL & rho0.3\_snr+10dB & seeds 10--19 & abstain & -- & -- \\
+Mag-IL & rho0.7\_snr+0dB & seeds 0--9 & \(6\) & \(0.15\) & 90\% \\
+Mag-IL & rho0.7\_snr+0dB & seeds 10--19 & \(6\) & \(0.15\) & 90\% \\
+Mag-IL & rho0.7\_snr+10dB & seeds 0--9 & abstain & -- & -- \\
+Mag-IL & rho0.7\_snr+10dB & seeds 10--19 & abstain & -- & -- \\
+Mag-IL & rho0.9\_snr+0dB & seeds 0--9 & abstain & -- & -- \\
+Mag-IL & rho0.9\_snr+0dB & seeds 10--19 & abstain & -- & -- \\
+Mag-IL & rho0.9\_snr+10dB & seeds 0--9 & abstain & -- & -- \\
+Mag-IL & rho0.9\_snr+10dB & seeds 10--19 & abstain & -- & -- \\
+Diag-x & snr-3dB\_rho0.5 & seeds 0--9 & \(6\) & \(0.4\) & 60\% \\
+Diag-x & snr-3dB\_rho0.5 & seeds 10--19 & \(6\) & \(0.5\) & 90\% \\
+Diag-x & snr+0dB\_rho0.5 & seeds 0--9 & abstain & -- & -- \\
+Diag-x & snr+0dB\_rho0.5 & seeds 10--19 & abstain & -- & -- \\
+Diag-x & snr+5dB\_rho0.5 & seeds 0--9 & abstain & -- & -- \\
+Diag-x & snr+5dB\_rho0.5 & seeds 10--19 & abstain & -- & -- \\
+Diag-x & snr+10dB\_rho0.5 & seeds 0--9 & abstain & -- & -- \\
+Diag-x & snr+10dB\_rho0.5 & seeds 10--19 & abstain & -- & -- \\
+Diag-x & snr+15dB\_rho0.5 & seeds 0--9 & abstain & -- & -- \\
+Diag-x & snr+15dB\_rho0.5 & seeds 10--19 & abstain & -- & -- \\
+Diag-x & snr+20dB\_rho0.5 & seeds 0--9 & abstain & -- & -- \\
+Diag-x & snr+20dB\_rho0.5 & seeds 10--19 & \(13\) & \(0.01\) & 0\% \\
+Diag-x & synth\_default & seeds 0--9 & \(6\) & \(0.4\) & 50\% \\
+Diag-x & synth\_default & seeds 10--19 & \(6\) & \(0.65\) & 90\% \\
+Diag-x & rho0.0\_snr+0dB & seeds 0--9 & abstain & -- & -- \\
+Diag-x & rho0.0\_snr+0dB & seeds 10--19 & abstain & -- & -- \\
+Diag-x & rho0.0\_snr+10dB & seeds 0--9 & abstain & -- & -- \\
+Diag-x & rho0.0\_snr+10dB & seeds 10--19 & abstain & -- & -- \\
+Diag-x & rho0.3\_snr+0dB & seeds 0--9 & abstain & -- & -- \\
+Diag-x & rho0.3\_snr+0dB & seeds 10--19 & abstain & -- & -- \\
+Diag-x & rho0.3\_snr+10dB & seeds 0--9 & abstain & -- & -- \\
+Diag-x & rho0.3\_snr+10dB & seeds 10--19 & abstain & -- & -- \\
+Diag-x & rho0.7\_snr+0dB & seeds 0--9 & \(7\) & \(0.3\) & 30\% \\
+Diag-x & rho0.7\_snr+0dB & seeds 10--19 & \(6\) & \(1\) & 100\% \\
+Diag-x & rho0.7\_snr+10dB & seeds 0--9 & abstain & -- & -- \\
+Diag-x & rho0.7\_snr+10dB & seeds 10--19 & abstain & -- & -- \\
+Diag-x & rho0.9\_snr+0dB & seeds 0--9 & \(6\) & \(0.1\) & 60\% \\
+Diag-x & rho0.9\_snr+0dB & seeds 10--19 & \(6\) & \(0.3\) & 50\% \\
+Diag-x & rho0.9\_snr+10dB & seeds 0--9 & \(9\) & \(0.4\) & 0\% \\
+Diag-x & rho0.9\_snr+10dB & seeds 10--19 & abstain & -- & -- \\
+\midrule
+\multicolumn{6}{@{}l}{ES: true rank 27, wrong rank 1, abstain 2 of 30; mean 98\%} \\
+\multicolumn{6}{@{}l}{Mag-IL: true rank 14, wrong rank 0, abstain 16 of 30; mean 81\%} \\
+\multicolumn{6}{@{}l}{Diag-x: true rank 7, wrong rank 3, abstain 20 of 30; mean 71\%} \\
+\bottomrule
+\end{longtable}

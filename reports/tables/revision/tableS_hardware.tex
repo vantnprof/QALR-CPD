@@ -1,0 +1,10 @@
+% Hardware and noise-model repeats
+\begin{tabular}{@{}lcccccc@{}}
+\toprule
+Backend & Calibration & Depth & Two-qubit gates & SWAPs & Optimum sampled & Gap of returned mask (\%) \\
+\midrule
+\texttt{ibm\_fez} (device) & 2026-10-29 & \(711\) & \(528\) & \(120\) & 1 of 5120 & \(603\pm155\) \\
+FakeFez (noise model) & 2025-02-26 & \(710\) & \(528\) & \(120\) & 4 of 5120 & \(254\pm182\) \\
+FakeTorino (noise model) & 2025-02-26 & \(659\) & \(503\) & \(119\) & 1 of 5120 & \(60\pm61\) \\
+\bottomrule
+\end{tabular}

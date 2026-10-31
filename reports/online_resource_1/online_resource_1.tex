@@ -1,0 +1,109 @@
+% Online Resource 1 of "Quantum Optimization for Adaptive Low-Rank CP Decomposition".
+% Build after `python main.py tables`, from this folder:
+%   pdflatex online_resource_1.tex && pdflatex online_resource_1.tex
+\documentclass[10pt]{article}
+\usepackage[margin=2cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs,longtable,pdflscape}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[hidelinks]{hyperref}
+\setlength{\LTpre}{4pt}\setlength{\LTpost}{4pt}
+\newcommand{\T}[1]{\input{../tables/revision/#1}}
+
+\title{Online Resource 1\\[4pt]\large Quantum Optimization for Adaptive Low-Rank CP Decomposition\\
+\normalsize Full result tables}
+\author{Van Tien Nguyen and Panagiotis Markopoulos\\\small The University of Texas at San Antonio}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section*{S1\quad Conventions}
+Every table below is generated from the per-run records of the code repository
+(\url{https://github.com/vantnprof/QALR-CPD}, folder \texttt{results/revision/}) by the command \texttt{python main.py tables}.
+Entries are mean \(\pm\) standard deviation over seeds; \(n\) is the number of runs.
+
+\begin{itemize}
+\item \emph{Penalty.} \(\mu\) is dimensionless; every solver receives the QUBO with
+\(\mu_{\mathrm{eff}}=\mu\|\mathcal X\|_F^2/R_{\max}\). Penalty grid of the selection protocol (Sec.~3.7): \(0.005\),
+\(0.01\), \(0.02\), \(0.05\), \(0.1\), \(0.15\), \(0.2\), \(0.3\), \(0.4\), \(0.5\), \(0.65\), \(0.8\), \(1\), \(1.5\), \(2\).
+A plateau is selected only if it spans at least three consecutive grid values; \(\mu\) is then its middle value (the
+upper of the two middle values for an even number).
+\item \emph{Datasets.} \texttt{synth\_default}: default synthetic benchmark (\(20^{4}\), \(R_{\mathrm{true}}=6\),
+\(\rho=0.5\), \(\sigma=10^{-2}\)); \texttt{amino}: Amino Acids; \texttt{kinetic}: X60t (error over observed entries);
+\texttt{covid}: COVID-19 systems serology; \texttt{snr}\(s\)\texttt{dB\_rho0.5}: exact-SNR grid;
+\texttt{rho}\(r\)\texttt{\_snr}\(s\)\texttt{dB}: SNR-matched collinearity designs; \texttt{noise\_}\(\sigma\) and
+\texttt{rho\_}\(r\): noise and collinearity sweeps of the first version.
+\item \emph{Methods.} As in the manuscript: ALS at fixed rank; QALR-CPD with exact search (ES), bit flipping (BF),
+multi-start bit flipping (MS-BF), simulated annealing (SA), tabu search (Tabu) or QAOA; in-loop magnitude pruning
+(Mag-IL) and its \(z\)-form variant (Diag-x); post-hoc truncation without (TopK-PH) and with 50 refit sweeps
+(TopK-PH+refit); in-loop truncation matched call by call to ES (TopK-IL).
+\item \emph{Excess over \(\varepsilon^\star\)}: relative error minus the realized noise floor
+\(\|\mathcal N\|_F/\|\mathcal X\|_F\), in percent of the floor. \(\hat R=R_{\mathrm{true}}\): share of seeds with exact
+rank recovery.
+\end{itemize}
+
+\section*{S2\quad Controlled ablation (manuscript Table 9)}
+\textbf{Table S1.} Default synthetic benchmark, all three penalties of the first version.
+\T{tableR1_ablation_synthetic.tex}
+\textbf{Table S2.} Real tensors, all three penalties of the first version.
+\T{tableR1_ablation_real.tex}
+
+\section*{S3\quad COVID-19 rows from \(R_{\max}=20\) (manuscript Table 10)}
+\textbf{Table S3.}
+\T{table7_covid_fixed_rows.tex}
+
+\section*{S4\quad Exact-SNR grid and SNR-matched collinearity (manuscript Tables 7 and 8)}
+\textbf{Table S4.} Every design at \(\mu\in\{0.1,0.3,0.5\}\).
+\T{tableR2-7_snr_and_rho.tex}
+
+\section*{S5\quad Penalty plateaus (manuscript Tables 14 and 15)}
+\textbf{Table S5.} Widest stable plateau for every dataset, \(R_{\max}\) and selection rule. The number of grid values a
+plateau spans is the number of grid values in its \(\mu\) range (Sec.~S1); plateaus of fewer than three values lead to
+abstention.
+\T{tableC1_plateaus.tex}
+
+\section*{S6\quad Noise-calibrated starting penalty}
+\textbf{Table S6.} \(\mu_0=\kappa\,\hat\sigma^2(\sum_n I_n)R_{\max}/\|\mathcal X\|_F^2\) and the rank exact search
+selects at \(\mu_0\).
+\T{tableC1_sigma_rule.tex}
+
+\section*{S7\quad Core consistency}
+\textbf{Table S7.} CORCONDIA at the plateau rank and its neighbours.
+\T{tableC1_corcondia.tex}
+
+\section*{S8\quad Solvers on identical saved QUBOs (manuscript Table 16 and Fig. 13)}
+\begin{landscape}
+\textbf{Table S8.} Main bank.
+{\footnotesize\setlength{\tabcolsep}{4pt}\T{tableR2_solver_bank.tex}}
+\end{landscape}
+\textbf{Table S9.} Scaling bank: share of instances solved to optimality, by number of QUBO variables.
+\T{tableR3-2_scaling.tex}
+
+\section*{S9\quad QAOA under the uniform non-empty rule (manuscript Table 18)}
+\textbf{Table S10.}
+{\small\setlength{\tabcolsep}{4pt}\T{tableR2-6_qaoa_noise.tex}}
+
+\section*{S10\quad First-version sweeps under one protocol (manuscript Tables 20 and 21)}
+\textbf{Table S11.}
+\T{tableR4-1_sweeps.tex}
+
+\section*{S11\quad Split-half check of the selection protocol (manuscript Sec. 4.4)}
+\textbf{Table S12.} Selection on one half of the seeds of each distinct synthetic design, exact recovery at the
+selected \(\mu\) on the other half.
+\T{tableS_heldout.tex}
+
+\section*{S12\quad Hardware and noise-model repeats (manuscript Table 19)}
+\textbf{Table S13.} One saved instance (Amino Acids, \(R=12\), \(\mu=0.1\), first pruning call), five repeats of 1024
+shots per backend; angles optimized on the noiseless simulator. Noise models: fake backends of qiskit-ibm-runtime
+0.50.0. Job identifiers are in \texttt{results/revision/hardware/hardware\_repeats.csv}.
+
+\smallskip
+{\footnotesize\setlength{\tabcolsep}{4pt}\T{tableS_hardware.tex}}
+
+\section*{S13\quad Cost of one pruning call (manuscript Table 17)}
+\textbf{Table S14.}
+\T{tableR4-5_runtime.tex}
+
+\end{document}

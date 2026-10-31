@@ -1,0 +1,24 @@
+% Cost of one pruning call
+\begin{longtable}{@{}lcccc@{}}
+\toprule
+Calls & Step & Mean (s) & Median (s) & \(n\) \\
+\midrule
+\endhead
+first call (\(R=R_{\max}\)) & QUBO construction & \(0.00233\) & \(0.00231\) & \(72\) \\
+first call (\(R=R_{\max}\)) & ES solve & \(0.0775\) & \(0.0781\) & \(12\) \\
+first call (\(R=R_{\max}\)) & BF solve & \(0.00283\) & \(0.00279\) & \(12\) \\
+first call (\(R=R_{\max}\)) & MS-BF solve & \(0.00325\) & \(0.00328\) & \(12\) \\
+first call (\(R=R_{\max}\)) & SA solve & \(0.0196\) & \(0.0206\) & \(12\) \\
+first call (\(R=R_{\max}\)) & Tabu solve & \(0.421\) & \(0.421\) & \(12\) \\
+first call (\(R=R_{\max}\)) & QAOA solve & \(24.3\) & \(16.8\) & \(12\) \\
+first call (\(R=R_{\max}\)) & QAOA n estimator evals & \(88.2\) & \(58.5\) & \(12\) \\
+later calls (\(R<R_{\max}\)) & QUBO construction & \(9.42{\times}10^{-4}\) & \(8.59{\times}10^{-4}\) & \(216\) \\
+later calls (\(R<R_{\max}\)) & ES solve & \(0.00117\) & \(0.00111\) & \(36\) \\
+later calls (\(R<R_{\max}\)) & BF solve & \(0.00119\) & \(0.00116\) & \(36\) \\
+later calls (\(R<R_{\max}\)) & MS-BF solve & \(0.0016\) & \(0.00161\) & \(36\) \\
+later calls (\(R<R_{\max}\)) & SA solve & \(0.00866\) & \(0.00837\) & \(36\) \\
+later calls (\(R<R_{\max}\)) & Tabu solve & \(0.42\) & \(0.42\) & \(36\) \\
+later calls (\(R<R_{\max}\)) & QAOA solve & \(1.66\) & \(1.4\) & \(36\) \\
+later calls (\(R<R_{\max}\)) & QAOA n estimator evals & \(90.5\) & \(63\) & \(36\) \\
+\bottomrule
+\end{longtable}
