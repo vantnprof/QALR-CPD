@@ -1,0 +1,17 @@
+% Solvers on identical QUBO instances (gap relative to the exact optimum of the penalized objective)
+\begin{longtable}{@{}lccccccc@{}}
+\toprule
+Solver & Gap, median (\% of \(f^\star\)) & Excess (\% of \(\|\mathcal X\|_F^2\)) & Optimum returned & \(P(\text{opt})\) per read & Evaluations (median) & TTS\(_{99}\) (s, median) & \(n\) \\
+\midrule
+\endhead
+BF & \(0\) & \(8.29 \pm 16\) & 58\% & 58\% & \(49.5\) & \(2.1{\times}10^{-4}\) & \(480\) \\
+MS-BF(M=8) & \(0\) & \(0.21 \pm 1.34\) & 95\% & 72\% & \(351\) & \(1.8{\times}10^{-4}\) & \(480\) \\
+MS-BF(M=32) & \(0\) & \(0 \pm 0\) & 100\% & 72\% & \(1.35e+03\) & \(5.1{\times}10^{-4}\) & \(480\) \\
+MS-BF(M=128) & \(0\) & \(0 \pm 0\) & 100\% & 72\% & \(5.38e+03\) & \(4.6{\times}10^{-4}\) & \(480\) \\
+SA & \(0\) & \(0 \pm 0\) & 100\% & 89\% & \(9.00{\times}10^{5}\) & \(3.9{\times}10^{-4}\) & \(480\) \\
+Tabu & \(0\) & \(0.0148 \pm 0.293\) & 99\% & 89\% & \(20\) & \(0.025\) & \(480\) \\
+Mag-IL & \(0\) & \(1.02 \pm 3.32\) & 81\% & -- & \(9\) & n/a & \(480\) \\
+Diag-x & \(47.2\) & \(26.6 \pm 38.6\) & 26\% & -- & \(9\) & n/a & \(480\) \\
+QAOA & \(19.3\) & \(9 \pm 11.9\) & 10\% & 0.0\%\textsuperscript{shot} & \(59\) & n/a & \(10\) \\
+\bottomrule
+\end{longtable}

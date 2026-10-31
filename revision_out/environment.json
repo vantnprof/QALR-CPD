@@ -1,0 +1,14 @@
+{
+  "python": "3.13.16",
+  "platform": "Linux-6.8.0-138-generic-x86_64-with-glibc2.35",
+  "cpu": "AMD Ryzen Threadripper PRO 5955WX 16-Cores",
+  "logical_cores": 32,
+  "torch": "2.15.0+cu132",
+  "numpy": "2.5.4",
+  "scipy": "1.18.1",
+  "pandas": "not installed",
+  "qiskit": "2.6.0",
+  "qiskit_aer": "0.18.2",
+  "qiskit_ibm_runtime": "0.50.0",
+  "dwave.samplers": "1.8.0"
+}

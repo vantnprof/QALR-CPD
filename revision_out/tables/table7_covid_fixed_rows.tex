@@ -1,0 +1,16 @@
+% Replacement rows for Table 7: every row starts from R_max = 20
+\begin{longtable}{@{}lcc@{}}
+\toprule
+Method (setting) & \(\hat R\) & Rel.\ error \\
+\midrule
+\endhead
+ALS (\(R=20\)) & \(20\) & \(0.2183 \pm 8.366{\times}10^{-4}\) \\
+ALS-LR (ES) (\(\mu=10^{-4}\)) & \(20 \pm 0\) & \(0.2183 \pm 8.366{\times}10^{-4}\) \\
+ALS w/ Top-\(K\) (\(K=6\), \(R_{\max}=20\)) & \(6\) & \(0.936 \pm 0.1675\) \\
+ALS w/ Top-\(K\) (\(K=8\), \(R_{\max}=20\)) & \(8\) & \(0.8398 \pm 0.1538\) \\
+ALS w/ Top-\(K\) (\(K=10\), \(R_{\max}=20\)) & \(10\) & \(0.7353 \pm 0.1389\) \\
+ALS w/ Top-\(K\) + refit (\(K=6\), \(R_{\max}=20\)) & \(6\) & \(0.3884 \pm 0.003542\) \\
+ALS w/ Top-\(K\) + refit (\(K=8\), \(R_{\max}=20\)) & \(8\) & \(0.35 \pm 0.004017\) \\
+ALS w/ Top-\(K\) + refit (\(K=10\), \(R_{\max}=20\)) & \(10\) & \(0.3157 \pm 0.002787\) \\
+\bottomrule
+\end{longtable}

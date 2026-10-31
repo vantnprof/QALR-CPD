@@ -109,29 +109,29 @@ def _sanitize_tag(tag: str) -> str:
 
 # tien.nguyen@utsa.edu
 # IBM_CONFIG_DEFAULT = {
-#     "API_KEY": "U23NJ2QMZBXc4z8tP3J4OUUAdcdAllYsWkAXPQij5LKM",
-#     "CRN": "crn:v1:bluemix:public:quantum-computing:us-east:a/9d14b4c30d2a4f7fb26617861ec3f2a3:adb4a5cb-5ab7-4bb8-93ea-22642f68eec1::",
+#     "API_KEY": "<REDACTED: pass --ibm-config or set IBM_API_KEY>",
+#     "CRN": "<REDACTED>",
 #     "backend_name": "ibm_fez",
 #     "channel": "ibm_quantum_platform",
 # }
 # tiennvcs@gmail.com
 IBM_CONFIG_DEFAULT = {
-    "API_KEY": "FbQL2pdS2fvsu09to25E2QvyPFEBuZHEx4-PYXjLqxch",
-    "CRN": "crn:v1:bluemix:public:quantum-computing:us-east:a/81754ea4a1644c7597267a4ce2e6b92d:d820efe6-21d7-45e4-9e6e-05513c27388d::",
+    "API_KEY": "<REDACTED: pass --ibm-config or set IBM_API_KEY>",
+    "CRN": "<REDACTED>",
     "backend_name": "ibm_fez",
     "channel": "ibm_quantum_platform",
 }
 #tien.nguyen3@my.utsa.edu
 # IBM_CONFIG_DEFAULT = {
-#     "API_KEY": "Edpwd2EzLoMAfR5U712uPs2gOZ__f41vVJwVdFmVQ6gn",
-#     "CRN": "crn:v1:bluemix:public:quantum-computing:us-east:a/51e8ba9918334b2fb9672b591d5360e4:e1aced58-5440-4ced-8780-2cf572e1901f::",
+#     "API_KEY": "<REDACTED: pass --ibm-config or set IBM_API_KEY>",
+#     "CRN": "<REDACTED>",
 #     "backend_name": "ibm_fez",
 #     "channel": "ibm_quantum_platform",
 # }
 #tiennvuit@gmail.com
 IBM_CONFIG_DEFAULT = {
-    "API_KEY": "Wg5wekQrDOV5Khejmi3mRFfcACwZjA4Tg3SQUQYW2RJQ",
-    "CRN": "crn:v1:bluemix:public:quantum-computing:us-east:a/1b27f7058c85435285d4792259ff896f:6eb585d8-dc11-4fe7-9482-e44ad6ae873e::",
+    "API_KEY": "<REDACTED: pass --ibm-config or set IBM_API_KEY>",
+    "CRN": "<REDACTED>",
     "backend_name": "ibm_torino",
     "channel": "ibm_quantum_platform",
 }

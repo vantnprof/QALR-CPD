@@ -1,0 +1,2 @@
+repeat,backend,calibration,protocol,R,reps,shots,isa_depth,two_qubit_gates,swaps_routing,layout,job_ids,qpu_seconds,wall_s,mask_int,energy,gap_pct,hit,p_shot_opt,sim_gap_pct,sim_p_shot_opt,hw_trace,instance,call,mu_eff,shot_tts99_s
+0,fake_torino,2025-02-26 15:26:08-05:00,sampled,12,2,1024,817,569,123,"[101, 98, 99, 100, 92, 80, 83, 81, 82, 62, 73, 63]","[""68ee329d-a364-41da-9517-f1bdb6be6427""]",0.0,10.850465297698975,1784,-645488245.2925804,618.7364498358029,0,0.0009765625,14.424485393664089,0.001220703125,[],amino__ES__mu0.1__R12__s0__scaling.npz,0,19193516.17248853,0.0

@@ -139,18 +139,7 @@ def exhaustive_prune_cp(
 
     # Objective (dropping constant ||X||_F^2):
     # E(z) = z^T G z - 2 z^T c + mu * sum(z)
-    best_E_scaled = torch.tensor(float("inf"), device=device, dtype=dtype)
-    best_mask: Optional[int] = None
-
-    start = 1 if require_nonempty else 0
-    for mask in range(start, 1 << R): 
-        z_bits = [(mask >> i) & 1 for i in range(R)]
-        z = torch.tensor(z_bits, device=device, dtype=dtype)
-
-        E_scaled = (z @ (G @ z)) - 2.0 * (z @ c) + mu * z.sum()
-        if E_scaled < best_E_scaled:
-            best_E_scaled = E_scaled
-            best_mask = mask
+    best_mask, _ = exhaustive_solve_qubo(G, c, mu, require_nonempty=require_nonempty)
 
     if best_mask is None:
         # Can happen only if require_nonempty=True and R==0
@@ -177,3 +166,61 @@ def exhaustive_prune_cp(
         "qubo_scale_eff": scale_eff,
     }
     return selected, float(best_E.detach().cpu()), (lam, U), diagnostics
+
+
+# ---------------------------------------------------------------------------
+# Revision: exact enumeration shared by the in-loop pruning call and the
+# solver benchmark. Two implementations with the same contract:
+#   argmin_{z in {0,1}^R, z != 0 if require_nonempty} z^T G z - 2 z^T c + mu 1^T z
+# Ties are broken toward the smallest mask integer (bit i <-> component i),
+# exactly as the original loop did (strict "<" while scanning masks in order).
+#   impl="vectorized" (default): chunked batched evaluation, ~100x faster.
+#   impl="loop": the original per-mask loop, kept for exact reproduction.
+# Select with the environment variable QALR_ES_IMPL=loop|vectorized.
+# ---------------------------------------------------------------------------
+import os as _os
+
+
+def _mask_bits(start: int, stop: int, R: int, device, dtype) -> torch.Tensor:
+    idx = torch.arange(start, stop, device=device, dtype=torch.int64)
+    shifts = torch.arange(R, device=device, dtype=torch.int64)
+    return ((idx.unsqueeze(1) >> shifts) & 1).to(dtype)
+
+
+@torch.no_grad()
+def exhaustive_solve_qubo(
+    G: torch.Tensor,
+    c: torch.Tensor,
+    mu: float,
+    require_nonempty: bool = True,
+    impl: Optional[str] = None,
+    chunk_bits: int = 16,
+) -> Tuple[Optional[int], float]:
+    """Exact minimizer of the pruning QUBO. Returns (best_mask_int, best_energy)."""
+    R = int(G.shape[0])
+    if R == 0:
+        return None, float("inf")
+    impl = (impl or _os.environ.get("QALR_ES_IMPL", "vectorized")).lower().strip()
+    start = 1 if require_nonempty else 0
+    total = 1 << R
+    best_E = torch.tensor(float("inf"), device=G.device, dtype=G.dtype)
+    best_mask: Optional[int] = None
+    if impl == "loop":
+        for mask in range(start, total):
+            z_bits = [(mask >> i) & 1 for i in range(R)]
+            z = torch.tensor(z_bits, device=G.device, dtype=G.dtype)
+            E = (z @ (G @ z)) - 2.0 * (z @ c) + mu * z.sum()
+            if E < best_E:
+                best_E = E
+                best_mask = mask
+        return best_mask, float(best_E)
+    chunk = 1 << int(chunk_bits)
+    for s0 in range(start, total, chunk):
+        s1 = min(s0 + chunk, total)
+        Z = _mask_bits(s0, s1, R, G.device, G.dtype)
+        E = ((Z @ G) * Z).sum(dim=1) - 2.0 * (Z @ c) + mu * Z.sum(dim=1)
+        i = int(torch.argmin(E).item())  # first occurrence within the chunk
+        if E[i] < best_E:  # strict: earlier chunks win ties
+            best_E = E[i]
+            best_mask = s0 + i
+    return best_mask, float(best_E)

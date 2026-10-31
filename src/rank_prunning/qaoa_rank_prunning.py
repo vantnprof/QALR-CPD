@@ -93,6 +93,192 @@ def _build_cost_operator(Q: np.ndarray, lin: np.ndarray):
     return SparsePauliOp(labels, coeffs)
 
 
+def qaoa_normalized_qubo(
+    G_np: np.ndarray, c_np: np.ndarray, mu: float, qubo_scale: float = 1.0
+) -> Tuple[np.ndarray, np.ndarray, float]:
+    """Upper-triangular QUBO (Q, lin) normalized by
+    s_ref = max(max|Q|, max|lin|, 1), then multiplied by qubo_scale.
+    Identical to the submitted implementation."""
+    R = G_np.shape[0]
+    Q = np.triu(G_np, 1) * 2.0
+    np.fill_diagonal(Q, np.diag(G_np))
+    lin = mu * np.ones(R) - 2.0 * c_np
+    scale_ref = max(np.max(np.abs(Q)), np.max(np.abs(lin)), 1.0)
+    Q_s = Q / scale_ref
+    lin_s = lin / scale_ref
+    scale_factor = float(qubo_scale)
+    if not (scale_factor > 0.0):
+        raise ValueError("qubo_scale must be a positive, finite number.")
+    if scale_factor != 1.0:
+        Q_s = Q_s * scale_factor
+        lin_s = lin_s * scale_factor
+    return Q_s, lin_s, float(scale_ref)
+
+
+@torch.no_grad()
+def qaoa_solve_qubo(
+    G_t: torch.Tensor,
+    c_t: torch.Tensor,
+    mu: float,
+    require_nonempty: bool = True,
+    qaoa_reps: int = 2,
+    shots: int = 2048,
+    maxiter: int = 200,
+    seed: int = 0,
+    num_restarts: int = 1,
+    top_k: Optional[int] = None,
+    qubo_scale: float = 1.0,
+    return_distribution: bool = False,
+) -> Tuple[List[int], float, dict]:
+    """
+    QAOA on the pruning QUBO  E(z) = z^T G z - 2 z^T c + mu 1^T z.
+
+    Circuit, initialization (beta=pi/2, gamma=pi), COBYLA settings, Aer sampling and the
+    'best energy among the top_k most frequent bitstrings' selection are unchanged from the
+    submitted implementation.
+
+    Revision (R2.6): require_nonempty is now honoured. The all-zero bitstring is never
+    returned when require_nonempty=True. If no nonzero bitstring is among the top_k most
+    frequent samples, the lowest-energy nonzero sampled bitstring is used; if every sample is
+    all-zero, the single best component (argmin of G_rr - 2 c_r + mu) is kept, which is the
+    same fallback bit-flipping uses. require_nonempty=False reproduces the submitted behaviour
+    (an all-zero selection, which the outer loop treats as a cancelled pruning call).
+    """
+    R = int(G_t.shape[0])
+    if top_k is None:
+        top_k = R
+    G_np = G_t.detach().cpu().double().numpy()
+    c_np = c_t.detach().cpu().double().numpy()
+    Q_s, lin_s, scale_ref = qaoa_normalized_qubo(G_np, c_np, mu, qubo_scale)
+    cost_hamiltonian = _build_cost_operator(Q=Q_s, lin=lin_s)
+
+    best_selected: List[int] = []
+    best_val = math.inf
+    best_mask_bits: Optional[List[int]] = None
+    n_evals_total = 0
+    empty_would_win = False
+    fallback = "none"
+    final_distribution_int: Dict[int, float] = {}
+
+    def to_bitstring(integer, num_bits):
+        result = np.binary_repr(integer, width=num_bits)
+        return [int(digit) for digit in result]
+
+    for _ in range(max(1, int(num_restarts))):
+
+        circuit = QAOAAnsatz(cost_operator=cost_hamiltonian, reps=int(qaoa_reps))
+
+        backend = AerSimulator(shots=shots)
+        backend.seed_simulator = seed
+        pm = generate_preset_pass_manager(optimization_level=0, backend=backend)
+
+        candidate_circuit = pm.run(circuit)
+
+        init_beta = math.pi / 2
+        init_gamma = math.pi
+        init_params = [init_beta] * qaoa_reps + [init_gamma] * qaoa_reps
+
+        def cost_func_estimator(params, ansatz, hamiltonian, estimator):
+            isa_hamiltonian = hamiltonian.apply_layout(ansatz.layout)
+            pub = (ansatz, isa_hamiltonian, params)
+            job = estimator.run([pub])
+            results = job.result()[0]
+            cost = results.data.evs
+            objective_func_vals.append(cost)
+            return cost
+
+        objective_func_vals = []
+        with Session(backend=backend) as session:
+            estimator = Estimator(mode=session)
+            estimator.options.default_shots = shots
+            estimator.seed_estimator = seed
+
+            result = minimize(
+                cost_func_estimator,
+                init_params,
+                args=(candidate_circuit, cost_hamiltonian, estimator),
+                method="COBYLA",
+                tol=1e-6,
+                options={"maxiter": maxiter},
+            )
+        n_evals_total += len(objective_func_vals)
+        opt_params = result.x
+
+        optimized_circuit = candidate_circuit.assign_parameters(opt_params)
+        optimized_circuit.measure_all()
+
+        sampler = Sampler(mode=backend)
+        sampler.options.default_shots = shots
+        sampler.seed_estimator = seed
+
+        pub = (optimized_circuit,)
+        job = sampler.run([pub], shots=shots)
+        counts_int = job.result()[0].data.meas.get_int_counts()
+        n_shots = sum(counts_int.values())
+        final_distribution_int = {key: val / n_shots for key, val in counts_int.items()}
+
+        keys = list(final_distribution_int.keys())
+        values = list(final_distribution_int.values())
+
+        top_k_indices = np.argsort(values)[-top_k:]
+        round_best_val = math.inf
+        round_best_bits: Optional[List[int]] = None
+        zero_val = None
+        for idx in top_k_indices:
+            sol_bits = to_bitstring(keys[idx], R)
+            sol_bits.reverse()
+            E_val = _energy_value(sol_bits, G_t, c_t, mu)
+            if require_nonempty and sum(sol_bits) == 0:
+                zero_val = E_val
+                continue
+            if E_val < round_best_val:
+                round_best_val = E_val
+                round_best_bits = sol_bits
+
+        if require_nonempty:
+            if zero_val is not None and zero_val < round_best_val:
+                empty_would_win = True
+            if round_best_bits is None:
+                # No nonzero bitstring among the top_k: use every sampled bitstring.
+                for key in keys:
+                    sol_bits = to_bitstring(key, R)
+                    sol_bits.reverse()
+                    if sum(sol_bits) == 0:
+                        continue
+                    E_val = _energy_value(sol_bits, G_t, c_t, mu)
+                    if E_val < round_best_val:
+                        round_best_val = E_val
+                        round_best_bits = sol_bits
+                if round_best_bits is not None:
+                    fallback = "nonzero_from_all_samples"
+            if round_best_bits is None:
+                diag_lin = np.diag(G_np) + (mu - 2.0 * c_np)
+                j = int(np.argmin(diag_lin))
+                round_best_bits = [1 if i == j else 0 for i in range(R)]
+                round_best_val = _energy_value(round_best_bits, G_t, c_t, mu)
+                fallback = "single_component"
+
+        if round_best_bits is not None and round_best_val < best_val:
+            best_val = round_best_val
+            best_mask_bits = round_best_bits
+            best_selected = [i for i, b in enumerate(round_best_bits) if b == 1]
+
+    diagnostics = {
+        "R": R,
+        "best_mask": best_mask_bits,
+        "best_E_no_const": best_val,
+        "qaoa_restarts": max(1, int(num_restarts)),
+        "qubo_scale": float(qubo_scale),
+        "qubo_scale_ref": float(scale_ref),
+        "n_estimator_evals": int(n_evals_total),
+        "empty_would_win": bool(empty_would_win),
+        "fallback": fallback,
+    }
+    if return_distribution:
+        diagnostics["final_distribution"] = final_distribution_int
+    return best_selected, best_val, diagnostics
+
+
 @torch.no_grad()
 def qaoa_prune_cp(
     X: torch.Tensor,
@@ -118,8 +304,6 @@ def qaoa_prune_cp(
 
     lam, U = normalize_cp_factors(factors, weights=weights)
     R = U[0].shape[1]
-    if top_k is None:
-        top_k = R
 
     if R > max_R_qaoa:
         raise ValueError(
@@ -144,114 +328,19 @@ def qaoa_prune_cp(
         u_cols = [U[n][:, r] for n in range(len(U))]
         c_t[r] = lam[r] * inner_product_rank1(X, u_cols)
 
-    G_np = G_t.detach().cpu().double().numpy()
-    c_np = c_t.detach().cpu().double().numpy()
-    Q = np.triu(G_np, 1) * 2.0
-    np.fill_diagonal(Q, np.diag(G_np))
-    lin = mu * np.ones(R) - 2.0 * c_np
-    scale_ref = max(np.max(np.abs(Q)), np.max(np.abs(lin)), 1.0)
-    Q_s = Q / scale_ref
-    lin_s = lin / scale_ref
-    scale_factor = float(qubo_scale)
-    if not (scale_factor > 0.0):
-        raise ValueError("qubo_scale must be a positive, finite number.")
-    if scale_factor != 1.0:
-        Q_s = Q_s * scale_factor
-        lin_s = lin_s * scale_factor
-
-    cost_hamiltonian = _build_cost_operator(Q=Q_s, lin=lin_s)
- 
-    best_selected: List[int] = []
-    best_val = math.inf
-    best_mask_bits: Optional[List[int]] = None
-
-    for _ in range(max(1, int(num_restarts))):
-
-        circuit = QAOAAnsatz(cost_operator=cost_hamiltonian, reps=int(qaoa_reps))
-        # circuit.measure_all()
-
-        backend = AerSimulator(shots=shots)
-        backend.seed_simulator = seed
-        pm = generate_preset_pass_manager(optimization_level=0, backend=backend)
-
-        candidate_circuit = pm.run(circuit)
-
-        init_beta = math.pi / 2
-        init_gamma = math.pi
-        init_params = [init_beta] * qaoa_reps + [init_gamma] * qaoa_reps
-
-        def cost_func_estimator(params, ansatz, hamiltonian, estimator):
-    
-            isa_hamiltonian = hamiltonian.apply_layout(ansatz.layout)
-        
-            pub = (ansatz, isa_hamiltonian, params)
-            job = estimator.run([pub])
-        
-            results = job.result()[0]
-            cost = results.data.evs
-        
-            objective_func_vals.append(cost)
-        
-            return cost
-        
-        objective_func_vals = []
-        with Session(backend=backend) as session:
-            estimator = Estimator(mode=session)
-            estimator.options.default_shots = shots
-            estimator.seed_estimator = seed
-       
-            result = minimize(
-                cost_func_estimator,
-                init_params,
-                args=(candidate_circuit, cost_hamiltonian, estimator),
-                method="COBYLA",
-                tol=1e-6,
-                options={"maxiter": maxiter},
-            )
-        opt_params = result.x
-        
-        optimized_circuit = candidate_circuit.assign_parameters(opt_params)
-        optimized_circuit.measure_all()
-
-        sampler = Sampler(mode=backend)
-        sampler.options.default_shots = shots
-        sampler.seed_estimator = seed
-    
-        pub = (optimized_circuit,)
-        job = sampler.run([pub], shots=shots)
-        counts_int = job.result()[0].data.meas.get_int_counts()
-        shots = sum(counts_int.values())
-        final_distribution_int = {key: val / shots for key, val in counts_int.items()}
-
-        # auxiliary functions to sample most likely bitstring
-        def to_bitstring(integer, num_bits):
-            result = np.binary_repr(integer, width=num_bits)
-            return [int(digit) for digit in result]
-        
-        keys = list(final_distribution_int.keys())
-        values = list(final_distribution_int.values())
-
-        top_k_indices = np.argsort(values)[-top_k:]
-        for idx in top_k_indices:
-            most_likely = keys[idx]
-            sol_bits = to_bitstring(most_likely, R)
-            sol_bits.reverse()
-            
-            E_val = _energy_value(sol_bits, G_t, c_t, mu)
-            
-            if E_val < best_val:
-                best_val = E_val
-                best_mask_bits = sol_bits
-                best_selected = [i for i, b in enumerate(sol_bits) if b == 1]
-
-    diagnostics = {
-        "R": R,
-        "best_mask": best_mask_bits,
-        "best_E_no_const": best_val,
-        "qaoa_restarts": max(1, int(num_restarts)),
-        "qubo_scale": float(scale_factor),
-        "qubo_scale_ref": float(scale_ref),
-    }
+    best_selected, best_val, diagnostics = qaoa_solve_qubo(
+        G_t,
+        c_t,
+        mu,
+        require_nonempty=require_nonempty,
+        qaoa_reps=qaoa_reps,
+        shots=shots,
+        maxiter=maxiter,
+        seed=seed,
+        num_restarts=num_restarts,
+        top_k=top_k,
+        qubo_scale=qubo_scale,
+    )
     return best_selected, best_val, (lam, U), diagnostics
 
 

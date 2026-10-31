@@ -1,0 +1,12 @@
+% QAOA with and without the non-empty rule
+\begin{longtable}{@{}lcccccccc@{}}
+\toprule
+Dataset & Method & Rel.\ error & \(\hat R\) & Calls & Cancelled & Empty would win & Fallback & \(n\) \\
+\midrule
+\endhead
+noise\_0.05 & ES & \(0.9947 \pm 0.001414\) & \(1.05 \pm 0.224\) & \(80\) & \(0\) & \(0\) & \(0\) & \(20\) \\
+noise\_0.05 & QAOA & \(0.9947 \pm 0.001414\) & \(1.05 \pm 0.224\) & \(80\) & \(0\) & \(4\) & \(0\) & \(20\) \\
+noise\_0.1 & ES & \(0.9985 \pm 3.504{\times}10^{-4}\) & \(1 \pm 0\) & \(80\) & \(0\) & \(0\) & \(0\) & \(20\) \\
+noise\_0.1 & QAOA & \(0.9985 \pm 3.504{\times}10^{-4}\) & \(1 \pm 0\) & \(80\) & \(0\) & \(80\) & \(60\) & \(20\) \\
+\bottomrule
+\end{longtable}
